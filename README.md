@@ -38,6 +38,31 @@
 
 예제(`examples/`)는 모두 가상의 평면입니다: 샘플 2룸 아파트, 샘플 사무실.
 
+### 걸어서 도면 그리기 (Walk mode)
+휴대폰의 모션 센서(가속도계 + 방향 센서)로 보행자 추측 항법(PDR)을 해서 벽을 만듭니다.
+1. HTTPS로 연 페이지에서 **시작**을 누릅니다 (iOS는 모션 센서 권한을 물어봅니다).
+   필요하면 **보폭 보정**: 길이를 아는 벽을 따라 걷고 다시 눌러 길이(m)를 입력하면 보폭 = 길이 ÷ 걸음 수.
+   기본 보폭은 0.7 m입니다.
+2. 방 모서리에 서서 **모서리**를 탭하고, 휴대폰을 앞을 향해 평평하게 든 채 벽을 따라 **천천히** 걷습니다.
+   모서리마다 **모서리**, 문 위치에서 **문**을 탭합니다 (문 위치에는 0.9 m 틈이 남습니다).
+3. 출발점에 돌아오면 **루프 닫기**: 누적 오차(출발점과의 차이)를 벽들에 나눠 보정합니다.
+   **직각 맞추기**는 모든 벽을 첫 벽 기준 0/90/180/270°로 맞춥니다 (대부분의 집은 직각). 마지막 벽 방향이
+   15° 넘게 어긋나면 방향 오차 경고가 뜹니다.
+4. 다음 방은 이어지는 문 위치에서 **문**을 탭해 시작하고 같은 벽을 따라 계속 걸으세요. 가장 가까운 기존 문에
+   맞춰 붙습니다.
+5. 선택: 모서리/문에서 **여기 dBm**으로 Wi-Fi 분석 앱에서 읽은 dBm을 입력하면 보정용 측정점이 됩니다.
+   **브라우저는 Wi-Fi 신호 세기를 읽을 수 없습니다.**
+6. **평면도로 사용**: 가장 큰 닫힌 루프는 바깥 벽(콘크리트), 나머지는 석고보드로 변환됩니다. 이후 일반
+   편집 도구로 고치세요 (실행 취소 가능, 기존 AP는 지워집니다).
+
+개인정보: GPS/위치 정보는 쓰지 않으며 네트워크 요청도 없습니다. 센서 값은 메모리에서 바로 처리되고 버려지며,
+모서리/문 좌표와 결과 벽만 남습니다 (일반 평면도와 같은 localStorage/내보내기).
+
+정확도 한계: **±5–10% 정도를 예상하세요.** 벽을 따라 천천히, 일정한 보폭으로 걸을 때 가장 잘 됩니다.
+보폭 차이(뛰기, 짧은 걸음), 휴대폰을 돌리거나 흔드는 것, 철골·가전 근처의 방향 센서 교란이 오차를 키웁니다.
+경로는 벽에서 몸 너비만큼 떨어져 있으니 방이 약간 작게 나오고, 붙어 있는 두 방의 공유 벽은 두 줄로 생길 수
+있습니다. 루프 닫기는 출발점과의 차이만 없애며 축척(보폭) 오차는 고치지 못합니다.
+
 ### 모델 설명
 - **경로 손실**: 로그-거리 모델 `PL(d) = FSPL(1 m, f) + 10·n·log10(d)` (n = 2이면 자유공간,
   ITU-R P.1238 형태). 대역 중심 주파수 2437 / 5250 / 6105 MHz.
@@ -103,6 +128,33 @@ browser**. No server, analytics, trackers, external CDNs or fonts, and no networ
    browser language). The current plan is kept only in this browser's localStorage.
 
 All examples in `examples/` are synthetic: a sample 2-room apartment and a sample office.
+
+### Walk mode (draw the plan by walking)
+Pedestrian dead reckoning (PDR) from the phone's motion sensors (accelerometer + orientation).
+1. Open the page over HTTPS and press **Start** (iOS asks for motion-sensor permission). Optionally
+   **Calibrate step**: walk along a wall of known length, tap again and type the length; step length =
+   length ÷ steps. Default step length is 0.7 m.
+2. Stand in a corner, tap **Corner**, then walk **slowly** along the wall holding the phone flat and pointing
+   forward. Tap **Corner** at every corner and **Door** in doorways (a 0.9 m gap is left there).
+3. Back at the start, tap **Close loop**: the accumulated drift (distance from the start point) is spread
+   over the walls. **Straighten** snaps every wall to 0/90/180/270° relative to the first one (most homes
+   are rectilinear). A heading-drift warning appears when the last wall is more than 15° off.
+4. Start the next room by tapping **Door** in the shared doorway, then walk on along that same wall; it is
+   joined to the nearest earlier door.
+5. Optional: **dBm here** at a corner/door stores a dBm you read from a Wi-Fi analyzer app as a calibration
+   point. **Browsers cannot read Wi-Fi signal strength.**
+6. **Use as floor plan**: the largest closed loop becomes the outer wall (concrete), the rest drywall. Edit
+   the result with the normal tools (undoable; existing APs are removed).
+
+Privacy: no GPS / Geolocation and no network requests. Sensor samples are processed in memory and
+discarded; only corner/door positions and the resulting walls are kept (same localStorage/export as the
+editor).
+
+Accuracy limits: **expect ±5–10 %.** Works best walking slowly and evenly along walls. Uneven steps,
+turning or shaking the phone, and compass disturbance near steel or appliances make it worse. The path
+runs a body-width away from the wall, so rooms come out slightly small and a wall shared by two walked
+rooms may appear twice. Loop closure removes the end-point gap only; it cannot fix a wrong step length
+(scale).
 
 ### Model
 - **Path loss**: log-distance `PL(d) = FSPL(1 m, f) + 10·n·log10(d)` (n = 2 is free space; ITU-R

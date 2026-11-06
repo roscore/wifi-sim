@@ -17,5 +17,5 @@ features = [
   "ImageData", "HtmlInputElement", "HtmlSelectElement", "HtmlImageElement", "HtmlAnchorElement",
   "HtmlTextAreaElement", "File", "FileList", "FileReader", "Blob", "BlobPropertyBag", "Url",
   "Location", "Navigator", "Storage", "CssStyleDeclaration", "DomRect", "Performance", "History",
-  "Clipboard", "DomTokenList",
+  "Clipboard", "DomTokenList", "DeviceMotionEvent", "DeviceAcceleration", "DeviceOrientationEvent",
 ]

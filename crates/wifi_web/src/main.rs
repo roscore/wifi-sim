@@ -3,10 +3,11 @@
 use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{prelude::*, Clamped, JsCast};
 use web_sys::{
-    Blob, BlobPropertyBag, CanvasRenderingContext2d, Document, Element, Event, EventTarget, FileReader,
-    HtmlAnchorElement, HtmlCanvasElement, HtmlElement, HtmlImageElement, HtmlInputElement, HtmlSelectElement,
-    ImageData, KeyboardEvent, PointerEvent, Url,
+    Blob, BlobPropertyBag, CanvasRenderingContext2d, DeviceMotionEvent, DeviceOrientationEvent, Document, Element,
+    Event, EventTarget, FileReader, HtmlAnchorElement, HtmlCanvasElement, HtmlElement, HtmlImageElement,
+    HtmlInputElement, HtmlSelectElement, ImageData, KeyboardEvent, PointerEvent, Url,
 };
+use wifi_core::pdr::{calibrate_step, Mark, StepDetector, Walk};
 use wifi_core::{
     calibrate, coverage, score, suggest_placement, Ap, Band, Coverage, Material, Measurement, Plan, Wall,
 };
@@ -79,6 +80,31 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("suggest_res", "Moved AP {i} to the best grid spot: median {m} dBm, {p}% of area below -70 dBm.", "AP {i}을(를) 최적 위치로 옮겼습니다: 중앙값 {m} dBm, -70 dBm 미만 면적 {p}%."),
     ("bad_plan", "Could not load plan: ", "평면도를 불러올 수 없습니다: "),
     ("share_done", "Link updated in the address bar (and below). Copy it to share.", "주소창(과 아래 칸)의 링크가 갱신되었습니다. 복사해서 공유하세요."),
+    ("section_walk", "Walk mode: draw the plan by walking", "걸어서 도면 그리기"),
+    ("walk_hint", "On a phone: press Start, stand in a corner, tap Corner, then walk slowly along the wall holding the phone flat and pointing forward. Tap Corner at every corner and Door in doorways; back at the start tap Close loop. Next room: start it by tapping Door in the shared doorway. Straighten snaps walls to right angles. Expect ±5–10 %.", "휴대폰에서: '시작'을 누르고 방 모서리에 서서 '모서리'를 탭한 뒤, 휴대폰을 앞을 향해 평평하게 들고 벽을 따라 천천히 걸으세요. 모서리마다 '모서리', 문 위치에서 '문'을 탭하고, 출발점으로 돌아오면 '루프 닫기'를 누르세요. 다음 방은 이어지는 문 위치에서 '문'을 탭해 시작합니다. '직각 맞추기'는 벽을 직각으로 맞춥니다. 오차는 ±5–10% 정도입니다."),
+    ("walk_privacy", "Motion and orientation data are processed in memory on this device and never leave it; only the resulting walls are kept. No GPS / location is used. Browsers cannot read Wi-Fi signal strength: to add dBm, read it from a Wi-Fi analyzer app and type it in.", "움직임·방향 센서 데이터는 이 기기의 메모리에서만 처리되고 밖으로 나가지 않으며, 결과 벽만 남습니다. GPS/위치 정보는 쓰지 않습니다. 브라우저는 Wi-Fi 신호 세기를 읽을 수 없으니, dBm은 Wi-Fi 분석 앱에서 확인해 직접 입력하세요."),
+    ("step_len", "Step length (m)", "보폭 (m)"),
+    ("walk_start", "Start", "시작"),
+    ("walk_calib", "Calibrate step", "보폭 보정"),
+    ("walk_corner", "Corner", "모서리"),
+    ("walk_door", "Door", "문"),
+    ("walk_close", "Close loop", "루프 닫기"),
+    ("walk_snap", "Straighten", "직각 맞추기"),
+    ("walk_dbm", "dBm here", "여기 dBm"),
+    ("walk_undo", "Undo mark", "표시 취소"),
+    ("walk_apply", "Use as floor plan", "평면도로 사용"),
+    ("walk_stop", "Discard walk", "걷기 버리기"),
+    ("walk_need_start", "Press Start first.", "먼저 '시작'을 누르세요."),
+    ("walk_no_sensor", "No motion sensors here: use a phone, over HTTPS.", "모션 센서가 없습니다. HTTPS로 접속한 휴대폰에서 사용하세요."),
+    ("walk_denied", "Motion sensor permission was denied.", "모션 센서 권한이 거부되었습니다."),
+    ("walk_started", "Walking. Stand in a corner and tap Corner to begin a room.", "걷기 시작. 방 모서리에 서서 '모서리'를 탭하세요."),
+    ("walk_calib_on", "Walk along a wall of known length, then tap Calibrate step again.", "길이를 아는 벽을 따라 걸은 뒤 '보폭 보정'을 다시 누르세요."),
+    ("walk_calib_prompt", "Length you just walked (m):", "방금 걸은 길이 (m):"),
+    ("walk_calib_res", "Step length set to {m} m ({n} steps).", "보폭을 {m} m로 설정했습니다 (걸음 {n}개)."),
+    ("walk_closed", "Loop closed: {g} m of drift spread over the walls.", "루프를 닫았습니다: 누적 오차 {g} m를 벽들에 나눠 보정했습니다."),
+    ("walk_applied", "Walls created. Edit them with the normal tools (drywall inside, concrete for the outer loop).", "벽을 만들었습니다. 일반 도구로 고치세요 (내부는 석고보드, 바깥 루프는 콘크리트)."),
+    ("walk_status", "{s} steps · heading {h}° · {r} room(s)", "걸음 {s} · 방향 {h}° · 방 {r}개"),
+    ("walk_drift", " · heading drift {d}° on the last wall: tap Straighten or walk more slowly", " · 마지막 벽 방향 오차 {d}°: '직각 맞추기'를 누르거나 더 천천히 걸으세요"),
     ("lg_rssi", "≥ -50 excellent|-60 good|-67 fair|-70 weak|-80 poor|≤ -80 dead zone", "≥ -50 매우 좋음|-60 좋음|-67 보통|-70 약함|-80 나쁨|≤ -80 음영 지역"),
     ("lg_sinr", "≥ 25 dB excellent|17 good|11 fair|8 weak|0 poor|≤ 0 unusable", "≥ 25 dB 매우 좋음|17 좋음|11 보통|8 약함|0 나쁨|≤ 0 사용 불가"),
 ];
@@ -164,6 +190,38 @@ struct App {
     /// canvas pixels per cell
     scale: f64,
     ms: f64,
+    walk: Option<WalkUi>,
+    walk_canvas: HtmlCanvasElement,
+    walk_ctx: CanvasRenderingContext2d,
+}
+
+/// Walk-mode state. Sensor samples are consumed as they arrive and never stored.
+struct WalkUi {
+    walk: Walk,
+    det: StepDetector,
+    heading: f64,
+    /// Step count when "Calibrate step" was started.
+    calib: Option<usize>,
+}
+
+/// iOS 13+ only grants motion/orientation events after `requestPermission()` from a user tap.
+fn request_sensor_permission(denied: &str) {
+    for name in ["DeviceMotionEvent", "DeviceOrientationEvent"] {
+        let get = |o: &JsValue, k: &str| js_sys::Reflect::get(o, &k.into()).ok();
+        let func = |v: Option<JsValue>| v.and_then(|f| f.dyn_into::<js_sys::Function>().ok());
+        let Some(ctor) = get(&win(), name) else { continue };
+        let Some(req) = func(get(&ctor, "requestPermission")) else { continue };
+        let Ok(promise) = req.call0(&ctor) else { continue };
+        let Some(then) = func(get(&promise, "then")) else { continue };
+        let (d1, d2) = (denied.to_string(), denied.to_string());
+        let ok = Closure::once_into_js(move |state: JsValue| {
+            if state.as_string().as_deref() != Some("granted") {
+                el::<Element>("msg").set_text_content(Some(&d1));
+            }
+        });
+        let err = Closure::once_into_js(move |_: JsValue| el::<Element>("msg").set_text_content(Some(&d2)));
+        let _ = then.call2(&promise, &ok, &err);
+    }
 }
 
 fn win() -> web_sys::Window {
@@ -485,6 +543,7 @@ impl App {
         self.render_legend();
         self.render_materials();
         self.render_status();
+        self.render_walk();
     }
 
     fn render_status(&self) {
@@ -754,6 +813,187 @@ impl App {
         a.remove();
         let _ = Url::revoke_object_url(&url);
     }
+
+    fn step_len(&self) -> f64 {
+        num("step-len").unwrap_or(0.7).clamp(0.3, 1.2)
+    }
+
+    fn walk_start(&mut self) {
+        let has = js_sys::Reflect::has(&win(), &"DeviceMotionEvent".into()).unwrap_or(false);
+        if !has || !win().is_secure_context() {
+            return self.msg(self.tr("walk_no_sensor"));
+        }
+        request_sensor_permission(self.tr("walk_denied"));
+        if self.walk.is_none() {
+            self.walk = Some(WalkUi { walk: Walk::new(self.step_len()), det: StepDetector::new(), heading: 0.0, calib: None });
+        }
+        self.msg(self.tr("walk_started"));
+        self.render_walk();
+    }
+
+    fn on_motion(&mut self, e: &DeviceMotionEvent) {
+        let Some(w) = &mut self.walk else { return };
+        let Some(a) = e.acceleration_including_gravity() else { return };
+        let (Some(x), Some(y), Some(z)) = (a.x(), a.y(), a.z()) else { return };
+        if w.det.push(e.time_stamp() / 1000.0, (x * x + y * y + z * z).sqrt()) {
+            w.walk.set_heading(w.heading);
+            w.walk.step();
+            self.render_walk();
+        }
+    }
+
+    fn on_orientation(&mut self, e: &DeviceOrientationEvent) {
+        let Some(w) = &mut self.walk else { return };
+        // alpha (gyro-fused, counter-clockwise) is steadier indoors than the magnetic compass;
+        // iOS's clockwise webkitCompassHeading is only the fallback.
+        let compass = e.alpha().map(|a| 360.0 - a).or_else(|| {
+            js_sys::Reflect::get(e, &"webkitCompassHeading".into()).ok().and_then(|v| v.as_f64())
+        });
+        if let Some(c) = compass {
+            w.heading = (c - 90.0).to_radians(); // compass 0 = screen up (-y)
+        }
+    }
+
+    /// Runs `f` on the active walk, or asks the user to press Start.
+    fn with_walk(&mut self, f: impl FnOnce(&mut WalkUi) -> Option<String>) {
+        let Some(w) = &mut self.walk else { return self.msg(self.tr("walk_need_start")) };
+        if let Some(m) = f(w) {
+            self.msg(&m);
+        }
+        self.render_walk();
+    }
+
+    fn walk_close(&mut self) {
+        let t = self.tr("walk_closed");
+        self.with_walk(|w| Some(fmt(t, &[("g", format!("{:.2}", w.walk.close_loop()))])));
+    }
+
+    fn walk_dbm(&mut self) {
+        if self.walk.is_none() {
+            return self.msg(self.tr("walk_need_start"));
+        }
+        let answer = win().prompt_with_message(self.tr("prompt_dbm")).ok().flatten();
+        let dbm = answer.and_then(|s| s.trim().replace(',', ".").parse::<f64>().ok());
+        if let Some(d) = dbm.filter(|d| (-120.0..=0.0).contains(d)) {
+            self.with_walk(|w| {
+                w.walk.set_dbm(d);
+                None
+            });
+        }
+    }
+
+    fn walk_calib(&mut self) {
+        let Some(w) = &mut self.walk else { return self.msg(self.tr("walk_need_start")) };
+        let Some(start) = w.calib.take() else {
+            w.calib = Some(w.walk.steps);
+            return self.msg(self.tr("walk_calib_on"));
+        };
+        let steps = w.walk.steps - start;
+        let answer = win().prompt_with_message(self.tr("walk_calib_prompt")).ok().flatten();
+        let len = answer.and_then(|s| s.trim().replace(',', ".").parse::<f64>().ok()).unwrap_or(0.0);
+        if let Some(s) = calibrate_step(len, steps).map(|s| s.clamp(0.3, 1.2)) {
+            if let Some(w) = &mut self.walk {
+                w.walk.step_m = s;
+            }
+            set_num("step-len", (s * 100.0).round() / 100.0);
+            let m = fmt(self.tr("walk_calib_res"), &[("m", format!("{s:.2}")), ("n", steps.to_string())]);
+            self.msg(&m);
+        }
+    }
+
+    fn walk_apply(&mut self) {
+        let Some(w) = &self.walk else { return self.msg(self.tr("walk_need_start")) };
+        let mut p = w.walk.to_plan(self.plan.cell_m);
+        if p.walls.is_empty() {
+            return;
+        }
+        p.name = self.plan.name.clone();
+        p.materials = self.plan.materials.clone();
+        p.exponent = self.plan.exponent;
+        p.offset_db = self.plan.offset_db;
+        self.set_plan(p);
+        self.msg(self.tr("walk_applied"));
+    }
+
+    /// Small live preview of the walk in metres, auto-fitted.
+    fn render_walk(&self) {
+        let c = &self.walk_ctx;
+        let (cw, ch) = (self.walk_canvas.width() as f64, self.walk_canvas.height() as f64);
+        c.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0).unwrap();
+        c.set_fill_style_str("#ffffff");
+        c.fill_rect(0.0, 0.0, cw, ch);
+        el::<Element>("walk-snap")
+            .class_list()
+            .toggle_with_force("active", self.walk.as_ref().is_some_and(|w| w.walk.snap))
+            .unwrap();
+        let status: Element = el("walk-status");
+        let Some(w) = &self.walk else {
+            status.set_text_content(None);
+            return;
+        };
+        let (walls, rooms, cur) = (w.walk.walls(), w.walk.rooms(), w.walk.cursor());
+        let pts: Vec<(f64, f64)> = rooms.iter().flatten().map(|v| (v.x, v.y)).chain([cur]).collect();
+        let (mut x0, mut y0, mut x1, mut y1) = (cur.0, cur.1, cur.0, cur.1);
+        for &(x, y) in &pts {
+            (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+        }
+        let pad = 24.0;
+        let s = ((cw - 2.0 * pad) / (x1 - x0).max(2.0)).min((ch - 2.0 * pad) / (y1 - y0).max(2.0));
+        let (ox, oy) = ((cw - (x1 - x0) * s) / 2.0, (ch - (y1 - y0) * s) / 2.0);
+        let tx = |p: (f64, f64)| (ox + (p.0 - x0) * s, oy + (p.1 - y0) * s);
+        c.set_line_cap("round");
+        for wl in &walls {
+            let (col, px) = wall_style(wl.material);
+            let (a, b) = (tx((wl.x1, wl.y1)), tx((wl.x2, wl.y2)));
+            c.set_stroke_style_str(col);
+            c.set_line_width(px * 1.5);
+            c.begin_path();
+            c.move_to(a.0, a.1);
+            c.line_to(b.0, b.1);
+            c.stroke();
+        }
+        let dot = |p: (f64, f64), r: f64, col: &str| {
+            let p = tx(p);
+            c.set_fill_style_str(col);
+            c.begin_path();
+            let _ = c.arc(p.0, p.1, r, 0.0, std::f64::consts::TAU);
+            c.fill();
+        };
+        if let (true, Some(v)) = (w.walk.is_open(), rooms.last().and_then(|r| r.last())) {
+            let (a, b) = (tx((v.x, v.y)), tx(cur));
+            c.set_stroke_style_str("rgba(21,101,192,0.5)");
+            c.set_line_width(2.0);
+            c.begin_path();
+            c.move_to(a.0, a.1);
+            c.line_to(b.0, b.1);
+            c.stroke();
+        }
+        for v in rooms.iter().flatten() {
+            let col = match (v.mark, v.dbm.is_some()) {
+                (_, true) => "#0d47a1",
+                (Mark::Door, _) => "#e67e22",
+                (Mark::Corner, _) => "#1d2329",
+            };
+            dot((v.x, v.y), 5.0, col);
+        }
+        dot(cur, 8.0, "#1565c0");
+
+        let mut text = fmt(
+            self.tr("walk_status"),
+            &[
+                ("s", w.walk.steps.to_string()),
+                ("h", format!("{:.0}", (w.heading.to_degrees() + 90.0).rem_euclid(360.0))),
+                ("r", rooms.len().to_string()),
+            ],
+        );
+        let drift = w.walk.drift_deg();
+        let warn = !w.walk.snap && drift > 15.0;
+        if warn {
+            text += &fmt(self.tr("walk_drift"), &[("d", format!("{drift:.0}"))]);
+        }
+        status.set_text_content(Some(&text));
+        status.class_list().toggle_with_force("warn", warn).unwrap();
+    }
 }
 
 type Shared = Rc<RefCell<App>>;
@@ -793,6 +1033,9 @@ fn main() {
         heat,
         scale: 1.0,
         ms: 0.0,
+        walk: None,
+        walk_ctx: ctx2d(&el("walk-view")),
+        walk_canvas: el("walk-view"),
     };
     let app: Shared = Rc::new(RefCell::new(app));
 
@@ -957,6 +1200,40 @@ fn main() {
     on_id("bg-opacity", "input", &app, |a, _| {
         a.bg_alpha = num("bg-opacity").unwrap_or(0.5);
         a.render();
+    });
+
+    // walk mode: sensor events only do work while a walk is active; nothing is stored or sent
+    on_id("walk-start", "click", &app, |a, _| a.walk_start());
+    on_id("walk-corner", "click", &app, |a, _| a.with_walk(|w| (w.walk.mark(Mark::Corner), None).1));
+    on_id("walk-door", "click", &app, |a, _| a.with_walk(|w| (w.walk.mark(Mark::Door), None).1));
+    on_id("walk-close", "click", &app, |a, _| a.walk_close());
+    on_id("walk-snap", "click", &app, |a, _| a.with_walk(|w| (w.walk.snap = !w.walk.snap, None).1));
+    on_id("walk-undo", "click", &app, |a, _| a.with_walk(|w| (w.walk.undo(), None).1));
+    on_id("walk-dbm", "click", &app, |a, _| a.walk_dbm());
+    on_id("walk-calib", "click", &app, |a, _| a.walk_calib());
+    on_id("walk-apply", "click", &app, |a, _| a.walk_apply());
+    on_id("walk-stop", "click", &app, |a, _| {
+        a.walk = None;
+        a.render_walk();
+    });
+    on_id("step-len", "change", &app, |a, _| {
+        let s = a.step_len();
+        if let Some(w) = &mut a.walk {
+            w.walk.step_m = s;
+        }
+    });
+    // try_borrow: a sensor event must never panic while a prompt() holds the app borrowed
+    let a = app.clone();
+    on(&win().into(), "devicemotion", move |e| {
+        if let Ok(mut a) = a.try_borrow_mut() {
+            a.on_motion(e.unchecked_ref());
+        }
+    });
+    let a = app.clone();
+    on(&win().into(), "deviceorientation", move |e| {
+        if let Ok(mut a) = a.try_borrow_mut() {
+            a.on_orientation(e.unchecked_ref());
+        }
     });
 
     let a = app.clone();

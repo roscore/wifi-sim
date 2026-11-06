@@ -10,6 +10,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod pdr;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Band {
     #[serde(rename = "2.4")]

@@ -36,6 +36,9 @@ button.active{background:#1565c0;color:#fff;border-color:#1565c0}
 #materials input{width:3.6rem}
 #share-out{width:100%}
 #lang{margin-left:auto;background:transparent;color:#fff;border-color:#fff}
+#walk-box button{padding:.55rem .7rem}
+#walk-view{border:1px solid #d0d6dc;border-radius:4px;margin-top:.3rem;cursor:default}
+#walk-status.warn{color:#b71c1c}
 </style>
 </head>
 <body>
@@ -95,6 +98,30 @@ button.active{background:#1565c0;color:#fff;border-color:#1565c0}
           <option value="apartment" data-i18n="ex_apartment">Sample apartment</option>
           <option value="office" data-i18n="ex_office">Sample office</option>
         </select></label>
+    </fieldset>
+    <fieldset id="walk-box">
+      <legend data-i18n="section_walk">Walk mode</legend>
+      <p class="note" data-i18n="walk_hint"></p>
+      <p class="note" data-i18n="walk_privacy"></p>
+      <label><span data-i18n="step_len">Step length (m)</span><input id="step-len" type="number" step="0.01" min="0.3" max="1.2" value="0.7"></label>
+      <div class="row">
+        <button id="walk-start" data-i18n="walk_start">Start</button>
+        <button id="walk-calib" data-i18n="walk_calib">Calibrate step</button>
+      </div>
+      <div class="row">
+        <button id="walk-corner" data-i18n="walk_corner">Corner</button>
+        <button id="walk-door" data-i18n="walk_door">Door</button>
+        <button id="walk-close" data-i18n="walk_close">Close loop</button>
+        <button id="walk-snap" data-i18n="walk_snap">Straighten</button>
+        <button id="walk-dbm" data-i18n="walk_dbm">dBm here</button>
+        <button id="walk-undo" data-i18n="walk_undo">Undo mark</button>
+      </div>
+      <canvas id="walk-view" width="600" height="400" aria-label="walk preview"></canvas>
+      <div id="walk-status" class="note" role="status"></div>
+      <div class="row">
+        <button id="walk-apply" data-i18n="walk_apply">Use as floor plan</button>
+        <button id="walk-stop" data-i18n="walk_stop">Discard walk</button>
+      </div>
     </fieldset>
     <fieldset>
       <legend data-i18n="section_calib">Calibration</legend>
