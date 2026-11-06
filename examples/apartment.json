@@ -1,0 +1,29 @@
+{
+  "name": "Sample 2-room apartment",
+  "width": 120,
+  "height": 90,
+  "cell_m": 0.1,
+  "exponent": 2.0,
+  "offset_db": 0.0,
+  "walls": [
+    { "x1": 2, "y1": 2, "x2": 30, "y2": 2, "material": "concrete" },
+    { "x1": 30, "y1": 2, "x2": 60, "y2": 2, "material": "glass" },
+    { "x1": 60, "y1": 2, "x2": 118, "y2": 2, "material": "concrete" },
+    { "x1": 118, "y1": 2, "x2": 118, "y2": 88, "material": "concrete" },
+    { "x1": 118, "y1": 88, "x2": 2, "y2": 88, "material": "concrete" },
+    { "x1": 2, "y1": 88, "x2": 2, "y2": 2, "material": "concrete" },
+    { "x1": 60, "y1": 2, "x2": 60, "y2": 50, "material": "concrete" },
+    { "x1": 60, "y1": 58, "x2": 60, "y2": 88, "material": "drywall" },
+    { "x1": 60, "y1": 45, "x2": 80, "y2": 45, "material": "drywall" },
+    { "x1": 80, "y1": 45, "x2": 88, "y2": 45, "material": "wood_door" },
+    { "x1": 88, "y1": 45, "x2": 118, "y2": 45, "material": "drywall" },
+    { "x1": 2, "y1": 65, "x2": 30, "y2": 65, "material": "brick" },
+    { "x1": 30, "y1": 65, "x2": 30, "y2": 72, "material": "wood_door" },
+    { "x1": 30, "y1": 72, "x2": 30, "y2": 88, "material": "brick" },
+    { "x1": 4, "y1": 86, "x2": 20, "y2": 86, "material": "mirror" }
+  ],
+  "aps": [
+    { "x": 10.5, "y": 40.5, "band": "5", "tx_dbm": 20.0, "gain_dbi": 3.0, "channel": 36 }
+  ],
+  "measurements": []
+}

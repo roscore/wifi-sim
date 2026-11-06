@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>wifi-sim</title>
+<link data-trunk rel="rust" href="crates/wifi_web/Cargo.toml" data-bin="wifi_web">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.4 system-ui,sans-serif;color:#1d2329;background:#f4f6f8}
+header{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.5rem .8rem;background:#1d2329;color:#fff}
+header h1{font-size:1.05rem;margin:0}
+header .est{font-size:.8rem;opacity:.85;flex:1 1 20rem}
+main{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:.6rem;padding:.6rem}
+@media (max-width:820px){main{grid-template-columns:1fr}}
+#stage{background:#fff;border:1px solid #d0d6dc;border-radius:6px;padding:.4rem;min-width:0}
+canvas{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair;background:#fff}
+aside{display:flex;flex-direction:column;gap:.5rem}
+fieldset{border:1px solid #d0d6dc;border-radius:6px;background:#fff;margin:0;padding:.4rem .6rem .6rem}
+legend{font-weight:600;padding:0 .3rem}
+label{display:flex;justify-content:space-between;align-items:center;gap:.4rem;margin:.2rem 0}
+input[type=number]{width:5.5rem}
+button,select,input{font:inherit}
+button{padding:.3rem .6rem;border:1px solid #9aa4ae;border-radius:4px;background:#f8f9fa;cursor:pointer}
+button.active{background:#1565c0;color:#fff;border-color:#1565c0}
+.row{display:flex;flex-wrap:wrap;gap:.3rem;margin:.2rem 0}
+.note{font-size:.8rem;color:#55606b;margin:.2rem 0}
+#readout,#status,#msg{font-size:.85rem;margin:.3rem 0;min-height:1.2em}
+#msg{color:#0d47a1}
+#legend{display:flex;flex-wrap:wrap;gap:.3rem .7rem;font-size:.8rem;margin-top:.3rem}
+#legend span i{display:inline-block;width:.9rem;height:.9rem;border-radius:2px;vertical-align:-2px;margin-right:.25rem}
+#materials table{border-collapse:collapse;width:100%;font-size:.8rem}
+#materials td,#materials th{padding:1px 2px;text-align:left}
+#materials input{width:3.6rem}
+#share-out{width:100%}
+#lang{margin-left:auto;background:transparent;color:#fff;border-color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <h1 data-i18n="title">Wi-Fi coverage simulator</h1>
+  <span class="est" data-i18n="estimate">Estimate only.</span>
+  <button id="lang">한국어</button>
+</header>
+<main>
+  <section id="stage">
+    <div class="row">
+      <button data-tool="wall" data-i18n="tool_wall">Wall</button>
+      <button data-tool="ap" data-i18n="tool_ap">AP</button>
+      <button data-tool="measure" data-i18n="tool_measure">Measure</button>
+      <button data-tool="erase" data-i18n="tool_erase">Eraser</button>
+      <select id="material" aria-label="material">
+        <option value="0" data-i18n="drywall">Drywall</option>
+        <option value="1" data-i18n="wood_door">Wooden door</option>
+        <option value="2" data-i18n="glass">Glass</option>
+        <option value="3" data-i18n="brick">Brick</option>
+        <option value="4" data-i18n="concrete">Concrete</option>
+        <option value="5" data-i18n="metal">Metal</option>
+        <option value="6" data-i18n="mirror">Mirror</option>
+      </select>
+      <button id="undo" data-i18n="undo">Undo</button>
+      <button id="redo" data-i18n="redo">Redo</button>
+      <button id="clear" data-i18n="clear">Clear</button>
+    </div>
+    <canvas id="plan"></canvas>
+    <div id="readout"></div>
+    <div id="legend"></div>
+    <div id="status"></div>
+    <div id="msg" role="status"></div>
+  </section>
+  <aside>
+    <fieldset>
+      <legend data-i18n="section_ap">Access point</legend>
+      <p class="note" data-i18n="hint_ap"></p>
+      <label><span data-i18n="band">Band</span>
+        <select id="band"><option value="0">2.4 GHz</option><option value="1" selected>5 GHz</option><option value="2">6 GHz</option></select></label>
+      <label><span data-i18n="tx">TX power (dBm)</span><input id="tx" type="number" step="1" min="-10" max="36" value="20"></label>
+      <label><span data-i18n="gain">Antenna gain (dBi)</span><input id="gain" type="number" step="0.5" min="-10" max="20" value="3"></label>
+      <label><span data-i18n="channel">Channel</span><input id="channel" type="number" step="1" min="1" max="233" value="36"></label>
+      <label><span data-i18n="view">View</span>
+        <select id="view"><option value="rssi" data-i18n="view_rssi">Signal</option><option value="sinr" data-i18n="view_sinr">SINR</option></select></label>
+      <div class="row"><button id="suggest" data-i18n="suggest">Suggest AP placement</button></div>
+    </fieldset>
+    <fieldset>
+      <legend data-i18n="section_plan">Floor plan</legend>
+      <label><span data-i18n="scale">Metres per cell</span><input id="scale" type="number" step="0.01" min="0.02" max="5"></label>
+      <label><span data-i18n="gw">Width (cells)</span><input id="gw" type="number" step="10" min="10" max="400"></label>
+      <label><span data-i18n="gh">Height (cells)</span><input id="gh" type="number" step="10" min="10" max="400"></label>
+      <label><span data-i18n="example">Example</span>
+        <select id="example">
+          <option value="" data-i18n="ex_pick">Load…</option>
+          <option value="blank" data-i18n="ex_blank">Blank</option>
+          <option value="apartment" data-i18n="ex_apartment">Sample apartment</option>
+          <option value="office" data-i18n="ex_office">Sample office</option>
+        </select></label>
+    </fieldset>
+    <fieldset>
+      <legend data-i18n="section_calib">Calibration</legend>
+      <p class="note" data-i18n="calib_hint"></p>
+      <label><span data-i18n="exponent">Path-loss exponent n</span><input id="exponent" type="number" step="0.1" min="1" max="8"></label>
+      <label><span data-i18n="offset">Offset (dB)</span><input id="offset" type="number" step="0.5" min="-40" max="40"></label>
+      <div class="row"><button id="calibrate" data-i18n="calibrate">Fit</button><button id="meas-clear" data-i18n="meas_clear">Clear points</button></div>
+    </fieldset>
+    <fieldset>
+      <legend data-i18n="section_mat">Wall attenuation (dB)</legend>
+      <div id="materials"></div>
+    </fieldset>
+    <fieldset>
+      <legend data-i18n="section_file">File &amp; share</legend>
+      <div class="row">
+        <button id="export" data-i18n="export">Export JSON</button>
+        <button id="import-btn" data-i18n="import">Import JSON</button>
+        <input id="import" type="file" accept=".json,application/json" hidden>
+        <button id="share" data-i18n="share">Share link</button>
+      </div>
+      <input id="share-out" readonly aria-label="share link">
+      <p class="note" data-i18n="share_note"></p>
+    </fieldset>
+    <fieldset>
+      <legend data-i18n="section_bg">Background image</legend>
+      <div class="row">
+        <button id="bg-btn" data-i18n="bg_pick">Choose image</button>
+        <input id="bg-file" type="file" accept="image/*" hidden>
+        <button id="bg-clear" data-i18n="bg_clear">Remove</button>
+      </div>
+      <label><span data-i18n="opacity">Opacity</span><input id="bg-opacity" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+      <p class="note" data-i18n="bg_note"></p>
+    </fieldset>
+  </aside>
+</main>
+</body>
+</html>

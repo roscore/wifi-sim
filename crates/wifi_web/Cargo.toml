@@ -1,0 +1,21 @@
+[package]
+name = "wifi_web"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+wifi_core = { path = "../wifi_core" }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "Window", "Document", "Element", "HtmlElement", "Node", "NodeList", "EventTarget", "Event",
+  "PointerEvent", "MouseEvent", "KeyboardEvent", "HtmlCanvasElement", "CanvasRenderingContext2d",
+  "ImageData", "HtmlInputElement", "HtmlSelectElement", "HtmlImageElement", "HtmlAnchorElement",
+  "HtmlTextAreaElement", "File", "FileList", "FileReader", "Blob", "BlobPropertyBag", "Url",
+  "Location", "Navigator", "Storage", "CssStyleDeclaration", "DomRect", "Performance", "History",
+  "Clipboard", "DomTokenList",
+]

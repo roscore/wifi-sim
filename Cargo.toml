@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["crates/wifi_core", "crates/wifi_web"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
