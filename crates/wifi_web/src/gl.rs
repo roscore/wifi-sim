@@ -2,9 +2,14 @@
 //! hemisphere + directional Blinn-Phong lighting, checker/grid ground with fog, sky gradient,
 //! planar projected shadows (stencil, no double blending), translucent volumes and line edges.
 //! Optional per-vertex colours (multiplied with the paint colour) for batched point clouds.
+//! Scalar-field floor: a half-float grid texture colour-mapped through a LUT texture in the shader
+//! (bilinear, with optional iso-lines), e.g. heatmaps.
 use crate::math::{self, M4, V};
-use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlBuffer, WebGlProgram, WebGlVertexArrayObject};
+use std::cell::Cell;
 use wasm_bindgen::JsCast;
+use web_sys::{
+    HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlBuffer, WebGlProgram, WebGlTexture, WebGlVertexArrayObject,
+};
 
 const LIT_VS: &str = r#"#version 300 es
 layout(location=0) in vec3 a_pos;
@@ -58,6 +63,45 @@ void main() {
   c = mix(c, u_line, (1.0 - min(min(a.x, a.y) * 0.5, 1.0)));
   o = vec4(mix(c, u_fog, smoothstep(u_fogr.x, u_fogr.y, length(v_pos - u_eye))), 1.0);
 }"#;
+
+/// Floor quad sampling a scalar field (R16F, 0..1 over `u_range`) and colouring it with a LUT.
+/// Iso-lines at `u_levels` (same units as `u_range`), antialiased with `fwidth`.
+const FIELD_FS: &str = r#"#version 300 es
+precision highp float;
+in vec3 v_pos, v_nrm, v_col;
+uniform sampler2D u_field, u_lut;
+uniform vec4 u_rect;
+uniform vec2 u_range;
+uniform vec3 u_base;
+uniform float u_alpha, u_iso, u_levels[5];
+out vec4 o;
+void main() {
+  vec2 uv = (v_pos.xz - u_rect.xy) / u_rect.zw;
+  float r = texture(u_field, uv).r;
+  vec3 c = mix(u_base, texture(u_lut, vec2(r * (255.0 / 256.0) + 0.5 / 256.0, 0.5)).rgb, u_alpha);
+  float v = mix(u_range.x, u_range.y, r);
+  float fw = max(fwidth(v), 1e-4);
+  float line = 0.0;
+  for (int i = 0; i < 5; i++) line = max(line, 1.0 - clamp(abs(v - u_levels[i]) / fw - 0.5, 0.0, 1.0));
+  c = mix(c, vec3(1.0), line * u_iso * 0.55);
+  vec2 e = min(uv, 1.0 - uv) * u_rect.zw;
+  c *= mix(0.75, 1.0, smoothstep(0.0, 0.25, min(e.x, e.y)));
+  o = vec4(c, 1.0);
+}"#;
+
+/// How a scalar field is drawn on the floor.
+#[derive(Clone, Copy)]
+pub struct FieldPaint {
+    /// Floor colour under the field.
+    pub base: V,
+    /// Field opacity over the base (0 = base only).
+    pub alpha: f32,
+    /// Values for texel 0 and 255.
+    pub range: [f32; 2],
+    pub levels: [f32; 5],
+    /// Iso-line strength (0 = off).
+    pub iso: f32,
+}
 
 const SKY_VS: &str = r#"#version 300 es
 out vec2 v_ndc;
@@ -331,6 +375,8 @@ pub struct Renderer {
     lit: WebGlProgram,
     ground: WebGlProgram,
     sky: WebGlProgram,
+    field: WebGlProgram,
+    vp: Cell<M4>,
     empty: WebGlVertexArrayObject,
     plane: Mesh,
     pub theme: Theme,
@@ -356,6 +402,7 @@ impl Renderer {
         let lit = program(&gl, LIT_VS, LIT_FS)?;
         let ground = program(&gl, LIT_VS, GROUND_FS)?;
         let sky = program(&gl, SKY_VS, SKY_FS)?;
+        let field = program(&gl, LIT_VS, FIELD_FS)?;
         let empty = gl.create_vertex_array()?;
         let r = Renderer {
             plane: upload(&gl, &plane())?,
@@ -363,6 +410,8 @@ impl Renderer {
             lit,
             ground,
             sky,
+            field,
+            vp: Cell::new(math::IDENTITY),
             empty,
             theme: DARK,
             light: math::norm([0.45, 0.9, -0.35]),
@@ -400,6 +449,7 @@ impl Renderer {
         gl.scissor(x, y, w, h);
         gl.enable(GL::SCISSOR_TEST);
         let vp = math::mul(proj, view);
+        self.vp.set(vp);
         let inv = math::invert(&vp).unwrap_or(math::IDENTITY);
 
         gl.use_program(Some(&self.sky));
@@ -436,6 +486,76 @@ impl Renderer {
         self.u_v3(&self.lit, "u_light", self.light);
         self.u_v3(&self.lit, "u_sky", t.amb_sky);
         self.u_v3(&self.lit, "u_gnd", t.amb_ground);
+    }
+
+    /// Single-channel half-float texture (`w × h`, row-major binary16 bits), bilinear, clamped.
+    /// R16F is filterable in core WebGL2. Pass the previous texture to replace its contents.
+    pub fn field_texture(&self, tex: Option<WebGlTexture>, w: usize, h: usize, data: &[u16]) -> Option<WebGlTexture> {
+        let view = js_sys::Uint16Array::from(data);
+        self.texture(tex, [w, h], [GL::R16F, GL::RED, GL::HALF_FLOAT], &view)
+    }
+
+    /// `n × 1` RGB8 lookup table texture, bilinear, clamped.
+    pub fn lut_texture(&self, rgb: &[u8]) -> Option<WebGlTexture> {
+        let view = js_sys::Uint8Array::from(rgb);
+        self.texture(None, [rgb.len() / 3, 1], [GL::RGB8, GL::RGB, GL::UNSIGNED_BYTE], &view)
+    }
+
+    /// `fmt` = internal format, format, type.
+    fn texture(&self, tex: Option<WebGlTexture>, size: [usize; 2], fmt: [u32; 3], data: &js_sys::Object) -> Option<WebGlTexture> {
+        let gl = &self.gl;
+        let t = match tex {
+            Some(t) => t,
+            None => gl.create_texture()?,
+        };
+        gl.active_texture(GL::TEXTURE0);
+        gl.bind_texture(GL::TEXTURE_2D, Some(&t));
+        gl.pixel_storei(GL::UNPACK_ALIGNMENT, 1);
+        gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
+            GL::TEXTURE_2D, 0, fmt[0] as i32, size[0] as i32, size[1] as i32, 0, fmt[1], fmt[2], Some(data),
+        )
+        .ok()?;
+        for (k, v) in [
+            (GL::TEXTURE_MIN_FILTER, GL::LINEAR),
+            (GL::TEXTURE_MAG_FILTER, GL::LINEAR),
+            (GL::TEXTURE_WRAP_S, GL::CLAMP_TO_EDGE),
+            (GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE),
+        ] {
+            gl.tex_parameteri(GL::TEXTURE_2D, k, v as i32);
+        }
+        Some(t)
+    }
+
+    /// Floor rectangle `rect` = (x0, z0, width, depth) on y = 0 showing `field` through `lut`.
+    /// Call right after `begin`. It is coplanar with the ground, so it always overwrites it (depth
+    /// ALWAYS: a polygon offset alone fails when the camera stands inside the quad and near-plane
+    /// clipping inflates its depth slope); the offset keeps later y = 0 overlays (shadows) on top.
+    pub fn draw_field(&self, rect: [f32; 4], field: &WebGlTexture, lut: &WebGlTexture, f: FieldPaint) {
+        let (gl, p) = (&self.gl, &self.field);
+        gl.use_program(Some(p));
+        self.u_m4(p, "u_vp", &self.vp.get());
+        let c = [rect[0] + rect[2] / 2.0, 0.0, rect[1] + rect[3] / 2.0];
+        self.u_m4(p, "u_model", &math::basis([1., 0., 0.], [0., 1., 0.], [0., 0., 1.], [rect[2], 1.0, rect[3]], c));
+        self.u_m4(p, "u_post", &math::IDENTITY);
+        gl.uniform4fv_with_f32_array(gl.get_uniform_location(p, "u_rect").as_ref(), &rect);
+        gl.uniform2fv_with_f32_array(gl.get_uniform_location(p, "u_range").as_ref(), &f.range);
+        self.u_v3(p, "u_base", f.base);
+        gl.uniform1f(gl.get_uniform_location(p, "u_alpha").as_ref(), f.alpha);
+        gl.uniform1f(gl.get_uniform_location(p, "u_iso").as_ref(), f.iso);
+        gl.uniform1fv_with_f32_array(gl.get_uniform_location(p, "u_levels").as_ref(), &f.levels);
+        for (unit, name, t) in [(0, "u_field", field), (1, "u_lut", lut)] {
+            gl.active_texture(GL::TEXTURE0 + unit);
+            gl.bind_texture(GL::TEXTURE_2D, Some(t));
+            gl.uniform1i(gl.get_uniform_location(p, name).as_ref(), unit as i32);
+        }
+        gl.enable(GL::POLYGON_OFFSET_FILL);
+        gl.polygon_offset(1.0, 1.0);
+        gl.depth_func(GL::ALWAYS);
+        self.raw(&self.plane, self.plane.count);
+        gl.depth_func(GL::LESS);
+        gl.disable(GL::POLYGON_OFFSET_FILL);
+        gl.active_texture(GL::TEXTURE0);
+        gl.use_program(Some(&self.lit));
     }
 
     /// Draw a mesh. Opaque (alpha 1) writes depth; translucent does not, so draw it last.

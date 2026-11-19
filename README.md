@@ -17,11 +17,30 @@
 브라우저 안에서만** 이루어집니다. 서버, 분석 도구, 추적기, 외부 CDN/폰트가 없으며 실행 중
 네트워크 요청을 하지 않습니다 (Content-Security-Policy로도 막혀 있습니다).
 
-*스크린샷 자리: 샘플 2룸 아파트 평면 위에 초록–노랑–빨강 히트맵이 표시된 화면.*
+### 화면 구성 (스크린샷 설명)
+- **2D 화면**: 어두운 앱 화면 가운데에 평면도 캔버스가 꽉 차게 놓입니다. 초록→노랑→주황→빨강→보라
+  히트맵이 부드럽게 보간되어 깔리고, 범례 기준값(-50/-60/-67/-70/-80 dBm)에 흰색 등고선이 그려집니다.
+  벽은 재질 색과 실제 두께로, AP는 빛나는 원형 아이콘(번호·대역·채널 라벨)으로 표시됩니다. 커서를 올리면
+  담당 AP까지의 점선과 거리(m) 라벨이, 벽을 그리는 동안에는 길이 라벨이 뜹니다.
+- **도구 막대**(왼쪽, 아이콘 + 툴팁): 벽, AP, 실측, 지우개, 실행 취소/다시 실행, 모두 지우기.
+- **설정 패널**(오른쪽, 접기 가능한 카드): AP · 재질(색 칩 + 감쇠 표) · 보기 · 평면도 · 걷기 모드.
+  휴대폰에서는 아래에서 끌어올리는 시트가 됩니다.
+- **HUD**(왼쪽 아래): 커서 위치(x, y), dBm, 담당 AP, SINR, 계산 시간(3D에서는 fps 포함).
+  **범례**(오른쪽 아래): 얇은 그라데이션 막대와 눈금.
+- **3D 화면**(위쪽 2D/3D 전환): 히트맵이 바닥 텍스처로 깔리고(셰이더에서 색 변환, 부드러운 보간),
+  벽은 2.4 m 높이로 세워집니다(재질 색, 유리는 반투명, 바닥에 그림자). AP는 받침대 위의 빛나는 기기와
+  바닥에서 퍼지는 고리로 보입니다. 3D에서도 AP를 바닥 위로 드래그하면 히트맵이 실시간으로 다시 계산되고,
+  커서를 올리면 그 바닥 지점의 dBm이 표시됩니다.
+- **카메라**: 원근(드래그 회전, 우클릭/Shift 드래그 이동, 휠·핀치 확대), 위에서, 걸어 보기(1.6 m 눈높이,
+  WASD/화살표 + 드래그로 둘러보기, 터치는 한 손가락 보기·두 손가락 이동).
+- **신호 광선**(선택): 선택한 AP에서 커서까지 직선을 그리고, 벽을 지날 때마다 그 벽의 감쇠(dB)를 색으로
+  표시합니다(HUD에 벽 개수·합계 dB·재질 목록).
+- WebGL2를 쓸 수 없는 브라우저에서는 2D로 남고 작은 안내가 뜹니다. 처음 열면 샘플 아파트가 자동으로 열리고
+  닫을 수 있는 짧은 안내 카드가 보입니다.
 
 ### 사용법
 1. **벽** 도구로 드래그해 벽을 그립니다. 재질(석고보드, 나무 문, 유리/창문, 벽돌, 콘크리트/내력벽,
-   금속/엘리베이터, 거울)을 먼저 고르세요. 거의 수평/수직인 선은 자동으로 맞춰집니다.
+   금속/엘리베이터, 거울)은 "재질" 카드의 색 칩으로 먼저 고르세요. 거의 수평/수직인 선은 자동으로 맞춰집니다.
    문틈·개구부는 벽을 비워 두거나 "나무 문" 재질로 그리면 됩니다.
 2. **AP** 도구로 빈 곳을 탭하면 AP가 추가되고, 드래그하면 이동합니다. 대역(2.4/5/6 GHz),
    송신 출력(dBm), 안테나 이득(dBi), 채널은 선택한 AP에 적용됩니다.
@@ -88,7 +107,7 @@
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install trunk --locked
-cargo test -p wifi_core
+cargo test --workspace
 trunk build --release        # dist/ 생성 (public_url = /wifi-sim/)
 trunk serve --public-url /   # 로컬 실행: http://localhost:8080
 sh tools/privacy_check.sh    # 개인정보 패턴 검사
@@ -108,10 +127,30 @@ Wi-Fi signal (dBm) heatmap. Written in Rust, compiled to WebAssembly, and **comp
 browser**. No server, analytics, trackers, external CDNs or fonts, and no network requests at runtime
 (also enforced by a Content-Security-Policy).
 
-*Screenshot placeholder: a sample 2-room apartment plan with a green–yellow–red heatmap.*
+### What it looks like (screenshot description)
+- **2D view**: a dark app shell with the floor plan canvas as the hero. The green → yellow → orange →
+  red → purple heatmap is smoothly interpolated, with white contour lines at the legend levels
+  (-50 / -60 / -67 / -70 / -80 dBm). Walls are drawn in their material colour at their physical
+  thickness, APs as glowing round icons labelled with number, band and channel. Hovering shows a dashed
+  guide to the serving AP with a distance label; drawing a wall shows its length.
+- **Toolbar** (left, icons with tooltips): wall, AP, measure, eraser, undo / redo, clear.
+- **Settings panel** (right, collapsible cards): Access points, Materials (colour chips + attenuation
+  table), View, Floor plan, Walk mode. On phones it becomes a bottom sheet.
+- **HUD** (bottom left): cursor x, y, dBm, best AP, SINR and compute time (plus fps in 3D).
+  **Legend** (bottom right): slim gradient bar with ticks.
+- **3D view** (2D / 3D toggle at the top): the live heatmap is the floor texture (colour-mapped in the
+  shader, bilinear), walls are extruded to 2.4 m in material colours (glass translucent) and cast
+  shadows, APs are glowing devices on small stands with a soft pulsing ring. Drag an AP across the
+  floor and the heatmap recomputes live; hovering shows the dBm at that floor point.
+- **Cameras**: perspective (drag to orbit, right / Shift drag to pan, wheel or pinch to zoom), top, and
+  walk-through (eye height 1.6 m, WASD / arrows + drag to look; touch: one finger looks, two move).
+- **Signal rays** (optional): a line from the selected AP to the cursor; every wall it crosses is
+  marked and coloured by its loss (the HUD lists the count, total dB and materials).
+- Without WebGL2 the app stays in 2D and shows a small notice. On first run the sample apartment loads
+  automatically with a short, dismissible hint.
 
 ### How to use
-1. **Wall** tool: drag to draw a wall. Pick a material first (drywall/partition, wooden door,
+1. **Wall** tool: drag to draw a wall. Pick a material first with the colour chips in the Materials card (drywall/partition, wooden door,
    glass/window, brick, concrete/load-bearing, metal/elevator, mirror). Near-horizontal/vertical lines
    snap. Leave a gap (or draw a wooden door) for doors and openings.
 2. **AP** tool: tap an empty spot to add an AP, drag to move it. Band (2.4 / 5 / 6 GHz), TX power (dBm),
@@ -186,7 +225,7 @@ detour paths can be optimistic. Use the result to get a feel for placement, not 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install trunk --locked
-cargo test -p wifi_core
+cargo test --workspace
 trunk build --release        # writes dist/ (public_url = /wifi-sim/)
 trunk serve --public-url /   # run locally at http://localhost:8080
 sh tools/privacy_check.sh    # scan for personal-data patterns
