@@ -2,6 +2,9 @@
 
 > **추정치일 뿐입니다.** 정확도를 보장하지 않습니다. / **Estimate only.** No accuracy claims.
 
+**▶ 바로 써 보기 / Try it now: https://roscore.github.io/wifi-sim/**  
+설치 없이 브라우저에서 바로 실행돼요. 휴대폰에서도 열 수 있어요. / Runs in the browser, no install, works on phones.
+
 [한국어](#한국어) · [English](#english)
 
 ---
