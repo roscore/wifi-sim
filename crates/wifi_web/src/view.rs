@@ -177,6 +177,48 @@ pub fn pick_cell(plan: &Plan, inv_vp: &M4, x: f32, y: f32) -> Option<(f64, f64)>
     inside.then_some(c)
 }
 
+/// Wall box under the screen ray (same boxes as the 3D view, a little thicker for picking):
+/// (wall index, ray distance) of the nearest hit.
+pub fn pick_wall(plan: &Plan, inv_vp: &M4, x: f32, y: f32, height: impl Fn(Material) -> f32) -> Option<(usize, f32)> {
+    let (o, d) = math::ndc_ray(inv_vp, x, y);
+    plan.walls
+        .iter()
+        .enumerate()
+        .filter_map(|(i, w)| {
+            let a = cell_to_world(plan, w.x1, w.y1, 0.0);
+            let b = cell_to_world(plan, w.x2, w.y2, 0.0);
+            let ab = math::sub(b, a);
+            let len = math::dot(ab, ab).sqrt();
+            if len < 1e-4 {
+                return None;
+            }
+            let half = (material_style(w.material).1 as f32).max(0.16) / 2.0;
+            // slab test in the wall's frame: u along the wall, v across, y up
+            let u = math::scale(ab, 1.0 / len);
+            let v = [-u[2], 0.0, u[0]];
+            let rel = math::sub(o, a);
+            let slabs = [(u, -half, len + half), (v, -half, half), ([0.0, 1.0, 0.0], 0.0, height(w.material))];
+            let (mut t0, mut t1) = (0.0f32, f32::INFINITY);
+            for (axis, lo, hi) in slabs {
+                let (p, q) = (math::dot(rel, axis), math::dot(d, axis));
+                if q.abs() < 1e-9 {
+                    if p < lo || p > hi {
+                        return None;
+                    }
+                    continue;
+                }
+                let (ta, tb) = ((lo - p) / q, (hi - p) / q);
+                t0 = t0.max(ta.min(tb));
+                t1 = t1.min(ta.max(tb));
+                if t0 > t1 {
+                    return None;
+                }
+            }
+            Some((i, t0))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+}
+
 /// Iso-line segments of a row-major grid sampled at cell centres (marching squares),
 /// in cell coordinates.
 pub fn contours(vals: &[f32], w: usize, h: usize, level: f32) -> Vec<[(f32, f32); 2]> {
@@ -414,6 +456,23 @@ mod tests {
         // pixel ↔ NDC
         assert_eq!(to_ndc(0.0, 0.0, 200.0, 100.0), (-1.0, 1.0));
         assert_eq!(to_ndc(100.0, 50.0, 200.0, 100.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn wall_pick_hits_the_nearest_box() {
+        let mut plan = Plan::new(120, 90, 0.1);
+        let wall = |x: f64| Wall { x1: x, y1: 10.0, x2: x, y2: 80.0, material: Material::Drywall };
+        plan.walls = vec![wall(90.0), wall(60.0)];
+        let vp = math::mul(
+            &math::perspective(0.9, 1.4, 0.05, 200.0),
+            &math::look_at([1.0, 1.5, 4.5], [11.0, 1.0, 4.5], [0.0, 1.0, 0.0]),
+        );
+        let inv = math::invert(&vp).unwrap();
+        let s = math::transform(&vp, [6.0, 1.2, 4.5]);
+        let h = |_| 2.4;
+        assert_eq!(pick_wall(&plan, &inv, s[0], s[1], h).map(|p| p.0), Some(1), "front wall first");
+        let up = math::transform(&vp, [6.0, 3.5, 4.5]);
+        assert!(pick_wall(&plan, &inv, up[0], up[1], h).is_none(), "over the top");
     }
 
     #[test]

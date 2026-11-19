@@ -100,6 +100,33 @@ body.mode3d.walkcam #walkhint{display:block}
 #hint.show{display:block;animation:pop .22s ease-out}
 #hint h2{margin:0 0 4px;font-size:14px}
 #hint p{margin:0 0 10px;color:var(--text-dim);font-size:12.5px}
+/* start card */
+#start{left:50%;top:50%;transform:translate(-50%,-50%);width:min(30rem,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;padding:16px;display:none;z-index:6}
+#start.show{display:block;animation:pop .22s ease-out}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-head h2{margin:0;font-size:16px}
+.xbtn{border:0;background:transparent;color:var(--text-dim);font-size:20px;line-height:1;width:30px;height:30px;border-radius:8px;cursor:pointer}
+.xbtn:hover{background:var(--surface-2);color:var(--text)}
+.opt{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;margin-top:8px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:rgba(255,255,255,.025);color:var(--text);cursor:pointer;transition:border-color var(--t),background var(--t)}
+button.opt:hover,div.opt:hover{border-color:var(--border-strong);background:rgba(255,255,255,.045)}
+.opt b{font-size:13.5px}
+.opt span{font-size:12px;color:var(--text-dim)}
+.opt .row{align-items:center;margin-top:6px}
+.opt input[type=number]{width:4.6rem}
+/* selected-wall panel, drawing bar */
+/* docked over the settings column (which the canvas layout already leaves free) */
+#wallpanel{right:12px;top:60px;width:var(--panel-w);max-height:calc(100vh - 180px);overflow:auto;padding:10px 12px;display:none;z-index:4}
+body.has-sel #wallpanel{display:block}
+#wallpanel.multi .single{display:none}
+#wp-mats{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
+#wp-mats .mchip{font-size:11.5px;padding:4px 8px 4px 5px}
+.btn.danger{color:#ffb4a2;border-color:rgba(255,138,101,.4)}
+#drawbar{left:50%;transform:translateX(-50%);top:calc(var(--top-h,52px) + 10px);display:none;align-items:center;gap:10px;padding:6px 8px 6px 12px;max-width:calc(100vw - 160px);font-size:12px;color:var(--text-dim)}
+body.drawing #drawbar{display:flex}
+body.drawing #msg{top:calc(var(--top-h,52px) + 62px)}
+#draw-done{display:none}
+body.poly-on #draw-done{display:inline-block}
+#draw-hint{flex:1 1 auto}
 @keyframes pop{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
 .primary{border:0;background:var(--accent);color:var(--accent-ink);font-weight:700;border-radius:9px;padding:6px 14px;cursor:pointer;transition:filter var(--t)}
 .primary:hover{filter:brightness(1.1)}
@@ -168,6 +195,14 @@ input[type=range]{accent-color:var(--accent);width:9rem}
   #legend-unit{display:none}
   #legendbox,body.panel-open #legendbox{right:12px;top:calc(var(--top-h,100px) + 8px);bottom:auto;width:210px}
   #hint{left:12px;width:calc(100vw - 24px)}
+  #toolbar{max-width:calc(100vw - 24px);overflow-x:auto;gap:1px;padding:3px}
+  #toolbar hr{display:none}
+  .tool{width:31px;height:36px}
+  .tool .ico{width:18px;height:18px}
+  #wallpanel{left:12px;right:12px;width:auto;top:auto;bottom:calc(108px + env(safe-area-inset-bottom));max-height:45vh;overflow:auto}
+  body.has-sel #hud{display:none}
+  #drawbar{left:12px;right:12px;transform:none;max-width:none;top:auto;bottom:calc(172px + env(safe-area-inset-bottom))}
+  body.has-sel #drawbar{display:none}
   #walkhint{top:auto;bottom:calc(180px + env(safe-area-inset-bottom))}
 }
 @media (prefers-reduced-motion:reduce){:root{--t:0ms}}
@@ -200,6 +235,8 @@ input[type=range]{accent-color:var(--accent);width:9rem}
   </div>
 
   <nav id="toolbar" class="float" aria-label="tools">
+    <button class="tool" data-tool="select" data-i18n-tip="tip_select"><svg class="ico" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 19z"/></svg></button>
+    <button class="tool" data-tool="room" data-i18n-tip="tip_room"><svg class="ico" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/><circle cx="4" cy="5" r="1.2"/><circle cx="20" cy="19" r="1.2"/></svg></button>
     <button class="tool" data-tool="wall" data-i18n-tip="tip_wall"><svg class="ico" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18M8 6v6M16 6v6M12 12v6M5 12v6M19 12v6"/></svg></button>
     <button class="tool" data-tool="ap" data-i18n-tip="tip_ap"><svg class="ico" viewBox="0 0 24 24"><path d="M4 10a12 12 0 0 1 16 0M7 13a8 8 0 0 1 10 0"/><rect x="6" y="16" width="12" height="4" rx="2"/></svg></button>
     <button class="tool" data-tool="measure" data-i18n-tip="tip_measure"><svg class="ico" viewBox="0 0 24 24"><path d="M12 21s-6-5-6-10a6 6 0 0 1 12 0c0 5-6 10-6 10z"/><circle cx="12" cy="11" r="2"/></svg></button>
@@ -208,7 +245,33 @@ input[type=range]{accent-color:var(--accent);width:9rem}
     <button class="tool" id="undo" data-i18n-tip="tip_undo"><svg class="ico" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
     <button class="tool" id="redo" data-i18n-tip="tip_redo"><svg class="ico" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
     <button class="tool" id="clear" data-i18n-tip="tip_clear"><svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+    <button class="tool" id="start-open" data-i18n-tip="tip_start"><svg class="ico" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M5 9.5V20h14V9.5M10 20v-6h4v6"/></svg></button>
   </nav>
+
+  <div id="drawbar" class="float" role="status">
+    <span id="draw-hint"></span>
+    <label class="toggle"><input type="checkbox" id="snap-grid"><span data-i18n="snap_grid">Grid 0.1 m</span></label>
+    <button id="draw-done" class="primary" data-i18n="draw_done">Done</button>
+  </div>
+
+  <div id="wallpanel" class="float" role="region" aria-labelledby="wp-title">
+    <div class="card-head"><b id="wp-title"></b><button id="wp-close" class="xbtn" aria-label="close">×</button></div>
+    <div id="wp-mats" role="radiogroup" aria-label="material of the selected walls"></div>
+    <div class="single">
+      <label class="f"><span data-i18n="wp_len">Length (m)</span><input id="wp-len" type="number" step="0.05" min="0.01"></label>
+      <p id="wp-thick" class="note"></p>
+      <div class="row">
+        <button id="wp-split" class="btn" data-i18n="wp_split">Split here</button>
+        <button id="wp-door" class="btn" data-i18n="wp_door">Add door here</button>
+        <button id="wp-window" class="btn" data-i18n="wp_window">Add window here</button>
+      </div>
+    </div>
+    <div class="row">
+      <button id="wp-dup" class="btn" data-i18n="wp_dup">Duplicate</button>
+      <button id="wp-del" class="btn danger" data-i18n="wp_del">Delete</button>
+    </div>
+    <p class="note" data-i18n="wp_keys"></p>
+  </div>
 
   <div id="hud" class="float" aria-live="polite">
     <div id="readout"></div>
@@ -230,6 +293,31 @@ input[type=range]{accent-color:var(--accent);width:9rem}
     <h2 id="hint-title" data-i18n="hint_title">Welcome</h2>
     <p data-i18n="hint_body"></p>
     <button id="hint-close" class="primary" data-i18n="hint_ok">Got it</button>
+  </div>
+
+  <div id="start" class="float" role="dialog" aria-labelledby="start-title">
+    <div class="card-head"><h2 id="start-title" data-i18n="start_title">Let's start</h2><button id="start-close" class="xbtn" aria-label="close">×</button></div>
+    <p class="note" data-i18n="start_sub"></p>
+    <div class="opt">
+      <b data-i18n="start_draw">Draw my home</b>
+      <span data-i18n="start_draw_d"></span>
+      <div class="row">
+        <span data-i18n="start_size">Size (m)</span>
+        <input id="start-w" type="number" min="2" max="200" step="0.5" value="12" aria-label="width (m)">
+        <span>×</span>
+        <input id="start-h" type="number" min="2" max="200" step="0.5" value="9" aria-label="height (m)">
+        <button id="start-draw" class="primary" data-i18n="start_go">Start drawing</button>
+      </div>
+    </div>
+    <button id="start-trace" class="opt"><b data-i18n="start_trace">Trace a floor-plan image</b><span data-i18n="start_trace_d"></span></button>
+    <button id="start-walk" class="opt"><b data-i18n="start_walk">Walk mode (phone)</b><span data-i18n="start_walk_d"></span></button>
+    <div class="opt">
+      <b data-i18n="start_example">Load an example</b>
+      <div class="row">
+        <button id="start-apartment" class="btn" data-i18n="ex_apartment">Sample apartment</button>
+        <button id="start-office" class="btn" data-i18n="ex_office">Sample office</button>
+      </div>
+    </div>
   </div>
 
   <button id="panel-toggle" class="float tool" data-i18n-tip="tip_panel" aria-controls="panel" style="width:42px;height:42px"><svg class="ico" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
@@ -276,6 +364,7 @@ input[type=range]{accent-color:var(--accent);width:9rem}
           <button id="bg-btn" class="btn" data-i18n="bg_pick">Choose image</button>
           <input id="bg-file" type="file" accept="image/*" hidden>
           <button id="bg-clear" class="btn" data-i18n="bg_clear">Remove</button>
+          <button id="bg-scale" class="btn" data-i18n="bg_scale">Set scale (2 clicks)</button>
         </div>
         <label class="f"><span data-i18n="opacity">Opacity</span><input id="bg-opacity" type="range" min="0" max="1" step="0.05" value="0.5"></label>
         <p class="note" data-i18n="bg_note"></p>
@@ -285,7 +374,7 @@ input[type=range]{accent-color:var(--accent);width:9rem}
     <details class="card">
       <summary><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 10h8v11M15 3v7h6"/></svg><span data-i18n="section_plan">Floor plan</span></summary>
       <div class="card-body">
-        <label class="f"><span data-i18n="scale">Metres per cell</span><input id="scale" type="number" step="0.01" min="0.02" max="5"></label>
+        <label class="f"><span data-i18n="scale">Metres per cell</span><input id="scale" type="number" step="0.01" min="0.005" max="5"></label>
         <label class="f"><span data-i18n="gw">Width (cells)</span><input id="gw" type="number" step="10" min="10" max="400"></label>
         <label class="f"><span data-i18n="gh">Height (cells)</span><input id="gh" type="number" step="10" min="10" max="400"></label>
         <label class="f"><span data-i18n="example">Example</span>

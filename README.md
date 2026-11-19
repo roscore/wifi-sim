@@ -22,7 +22,8 @@
   히트맵이 부드럽게 보간되어 깔리고, 범례 기준값(-50/-60/-67/-70/-80 dBm)에 흰색 등고선이 그려집니다.
   벽은 재질 색과 실제 두께로, AP는 빛나는 원형 아이콘(번호·대역·채널 라벨)으로 표시됩니다. 커서를 올리면
   담당 AP까지의 점선과 거리(m) 라벨이, 벽을 그리는 동안에는 길이 라벨이 뜹니다.
-- **도구 막대**(왼쪽, 아이콘 + 툴팁): 벽, AP, 실측, 지우개, 실행 취소/다시 실행, 모두 지우기.
+- **도구 막대**(왼쪽, 아이콘 + 툴팁): 선택, 방, 벽, AP, 실측, 지우개, 실행 취소/다시 실행, 모두 지우기,
+  시작 카드 다시 열기.
 - **설정 패널**(오른쪽, 접기 가능한 카드): AP · 재질(색 칩 + 감쇠 표) · 보기 · 평면도 · 걷기 모드.
   휴대폰에서는 아래에서 끌어올리는 시트가 됩니다.
 - **HUD**(왼쪽 아래): 커서 위치(x, y), dBm, 담당 AP, SINR, 계산 시간(3D에서는 fps 포함).
@@ -35,13 +36,38 @@
   WASD/화살표 + 드래그로 둘러보기, 터치는 한 손가락 보기·두 손가락 이동).
 - **신호 광선**(선택): 선택한 AP에서 커서까지 직선을 그리고, 벽을 지날 때마다 그 벽의 감쇠(dB)를 색으로
   표시합니다(HUD에 벽 개수·합계 dB·재질 목록).
-- WebGL2를 쓸 수 없는 브라우저에서는 2D로 남고 작은 안내가 뜹니다. 처음 열면 샘플 아파트가 자동으로 열리고
-  닫을 수 있는 짧은 안내 카드가 보입니다.
+- WebGL2를 쓸 수 없는 브라우저에서는 2D로 남고 작은 안내가 뜹니다. 처음 열면 **시작 카드**가 뜹니다:
+  (1) 우리 집 그리기(빈 평면도, 크기 m 입력, 기본 12×9 m), (2) 평면도 이미지 따라 그리기, (3) 걸어서
+  그리기(휴대폰), (4) 예제 불러오기. 도구 막대의 집 아이콘으로 언제든 다시 열 수 있습니다.
+
+### 그리는 방법
+- **방 도구**(빈 평면도의 기본 도구): 사각형을 드래그하면 현재 재질의 벽 4개가 모서리를 공유하며
+  만들어집니다. Shift(터치는 두 번째 손가락)를 누르면 정사각형.
+- **벽 도구 = 꺾은선**: 클릭으로 시작하고, 클릭할 때마다 이어진 벽이 하나씩 추가됩니다. 더블클릭, Enter,
+  또는 시작점 클릭으로 끝내고, Esc는 지금 그리는 구간만 취소합니다. 터치는 점을 탭하고 "완료"를 누릅니다.
+  - 그리는 동안 길이(m)가 실시간으로 표시되고, 각도는 0/45/90°로 스냅됩니다(Alt를 누르면 해제).
+  - 기존 벽의 끝점(■)과 벽 위(◆)에 약 0.3 m 반경으로 자석처럼 붙습니다. 상단 바에서 0.1 m 격자 스냅을
+    켤 수 있습니다.
+  - 구간을 그리는 중에 숫자를 입력하면 그 길이(m)로 정확히 놓입니다(Enter로 확정).
+- **선택 도구**(그리기를 끝내면 자동으로 전환): 벽을 클릭하면 강조와 끝점 핸들이 보입니다.
+  가운데를 끌면 이동, 끝점을 끌면 모양 변경. 끝점이 겹친 곳은 **접합부**라서 함께 움직이므로 방이 닫힌
+  채로 유지됩니다(Alt 드래그는 떼어내기). 빈 곳을 드래그하면 여러 벽을 상자 선택합니다.
+- **선택한 벽 패널**: 재질 칩, 정확한 길이(m) 입력, 두께 안내, 삭제, "여기서 나누기"(접합부 추가),
+  "여기에 문 / 창문"(벽을 0.9 m / 1.2 m 잘라 나무 문 / 유리 구간을 넣음, 전체 길이는 그대로). 여러 개를
+  선택하면 재질 변경·이동·복제·삭제를 한 번에 합니다.
+- **키보드**: Delete/Backspace 삭제, 화살표 0.1 m 이동(Shift 0.5 m), Ctrl+Z / Ctrl+Y 실행 취소/다시 실행,
+  Ctrl+D 복제, Esc 취소/선택 해제. 모든 편집은 실행 취소 한 단계입니다.
+- 커서 모양이 할 일을 알려 줍니다(이동 ✥, 모양 변경 ✋, 추가 +). 3D에서도 선택 도구로 벽을 클릭해
+  선택하고 바닥을 따라 끌어 옮길 수 있습니다(모서리 변경·상자 선택은 2D에서).
+- **이미지 따라 그리기**: 시작 카드에서 이미지를 고르면 그 비율의 빈 평면도가 만들어지고, 실제 거리를
+  아는 두 점을 클릭한 뒤 거리(m)를 입력하면 축척이 맞춰집니다. "배경 이미지"의 "축척 맞추기"로 다시 할 수
+  있습니다.
+- 벽은 계속 단순한 선분으로 저장되므로 예전에 저장한 평면도와 공유 링크도 그대로 열립니다.
 
 ### 사용법
-1. **벽** 도구로 드래그해 벽을 그립니다. 재질(석고보드, 나무 문, 유리/창문, 벽돌, 콘크리트/내력벽,
-   금속/엘리베이터, 거울)은 "재질" 카드의 색 칩으로 먼저 고르세요. 거의 수평/수직인 선은 자동으로 맞춰집니다.
-   문틈·개구부는 벽을 비워 두거나 "나무 문" 재질로 그리면 됩니다.
+1. **방**·**벽** 도구로 벽을 그리고 **선택** 도구로 고칩니다(위 "그리는 방법"). 재질(석고보드, 나무 문,
+   유리/창문, 벽돌, 콘크리트/내력벽, 금속/엘리베이터, 거울)은 "재질" 카드의 색 칩으로 고르거나, 선택한 벽
+   패널에서 바꿉니다. 문·창문은 선택한 벽의 "여기에 문 / 창문"으로 넣습니다.
 2. **AP** 도구로 빈 곳을 탭하면 AP가 추가되고, 드래그하면 이동합니다. 대역(2.4/5/6 GHz),
    송신 출력(dBm), 안테나 이득(dBi), 채널은 선택한 AP에 적용됩니다.
 3. 히트맵 범례: ≥ -50 매우 좋음 … ≤ -80 음영 지역. 마우스를 올리면(터치는 드래그) 해당 위치의
@@ -133,7 +159,8 @@ browser**. No server, analytics, trackers, external CDNs or fonts, and no networ
   (-50 / -60 / -67 / -70 / -80 dBm). Walls are drawn in their material colour at their physical
   thickness, APs as glowing round icons labelled with number, band and channel. Hovering shows a dashed
   guide to the serving AP with a distance label; drawing a wall shows its length.
-- **Toolbar** (left, icons with tooltips): wall, AP, measure, eraser, undo / redo, clear.
+- **Toolbar** (left, icons with tooltips): select, room, wall, AP, measure, eraser, undo / redo, clear,
+  and a home button that reopens the Start card.
 - **Settings panel** (right, collapsible cards): Access points, Materials (colour chips + attenuation
   table), View, Floor plan, Walk mode. On phones it becomes a bottom sheet.
 - **HUD** (bottom left): cursor x, y, dBm, best AP, SINR and compute time (plus fps in 3D).
@@ -146,13 +173,42 @@ browser**. No server, analytics, trackers, external CDNs or fonts, and no networ
   walk-through (eye height 1.6 m, WASD / arrows + drag to look; touch: one finger looks, two move).
 - **Signal rays** (optional): a line from the selected AP to the cursor; every wall it crosses is
   marked and coloured by its loss (the HUD lists the count, total dB and materials).
-- Without WebGL2 the app stays in 2D and shows a small notice. On first run the sample apartment loads
-  automatically with a short, dismissible hint.
+- Without WebGL2 the app stays in 2D and shows a small notice. On first run a **Start card** opens:
+  (1) Draw my home (empty plan, size in metres, default 12 × 9 m), (2) Trace a floor-plan image,
+  (3) Walk mode (phone), (4) Load an example. The home button in the toolbar reopens it.
+
+### How to draw
+- **Room tool** (default for empty plans): drag a rectangle to get 4 walls of the current material that
+  share their corners. Hold Shift (or put a second finger down) for a square.
+- **Wall tool = polyline**: click to start, every click adds a joined segment. Double-click, Enter or a
+  click on the start point finishes; Esc cancels the current segment. On touch: tap points, then *Done*.
+  - While drawing you see the live length in metres; the angle snaps to 0 / 45 / 90° (hold Alt to
+    disable).
+  - Endpoints (■) and walls (◆) act as magnets within about 0.3 m. An optional 0.1 m grid snap is in the
+    drawing bar at the top.
+  - Type a number while a segment is being drawn to give it that exact length (Enter confirms).
+- **Select tool** (also where you land after finishing a drawing): click a wall to select it (highlight +
+  handles). Drag the middle to move it, drag an endpoint handle to reshape it. Coinciding endpoints form a
+  **joint**: dragging a joint moves all connected walls, so rooms stay closed (Alt-drag detaches).
+  Drag on empty space to box-select several walls.
+- **Selected wall panel**: material chips, exact length (m), a thickness hint, Delete, *Split here*
+  (adds a joint) and *Add door / window here* (cuts a 0.9 m / 1.2 m opening and fills it with a wooden
+  door / glass segment; the total length is unchanged). With several walls selected: change material,
+  move, duplicate or delete them together.
+- **Keyboard**: Delete / Backspace removes the selection, arrows nudge by 0.1 m (Shift 0.5 m),
+  Ctrl+Z / Ctrl+Y undo / redo, Ctrl+D duplicates, Esc cancels or deselects. Every edit is one undo step.
+- The cursor tells you what a drag will do (move, reshape, add). In 3D the Select tool picks walls too
+  (ray against the wall boxes) and drags them along the floor; reshaping and box select are 2D only.
+- **Tracing an image**: pick it from the Start card; you get an empty plan with the image's aspect ratio,
+  then click two points whose real distance you know and type it in metres to set the scale. *Set scale*
+  in the Background image card repeats this.
+- Walls are still stored as plain segments, so older saved plans and share links keep working.
 
 ### How to use
-1. **Wall** tool: drag to draw a wall. Pick a material first with the colour chips in the Materials card (drywall/partition, wooden door,
-   glass/window, brick, concrete/load-bearing, metal/elevator, mirror). Near-horizontal/vertical lines
-   snap. Leave a gap (or draw a wooden door) for doors and openings.
+1. Draw walls with the **Room** and **Wall** tools and edit them with **Select** (see "How to draw").
+   Pick the material (drywall/partition, wooden door, glass/window, brick, concrete/load-bearing,
+   metal/elevator, mirror) with the colour chips in the Materials card, or change it in the selected-wall
+   panel. Add doors and windows with *Add door / window here* on a selected wall.
 2. **AP** tool: tap an empty spot to add an AP, drag to move it. Band (2.4 / 5 / 6 GHz), TX power (dBm),
    antenna gain (dBi) and channel apply to the selected AP.
 3. Legend: ≥ -50 excellent … ≤ -80 dead zone. Hover (or drag on touch) to read signal, serving AP and

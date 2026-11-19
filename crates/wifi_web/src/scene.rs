@@ -26,7 +26,7 @@ pub struct Scene {
     ring: Mesh,
     opaque: Option<Mesh>,
     glass: Option<Mesh>,
-    built: Option<(Vec<Wall>, u64)>,
+    built: Option<(Vec<Wall>, u64, Vec<usize>)>,
     field: Option<WebGlTexture>,
     lut: WebGlTexture,
     rays: Option<Mesh>,
@@ -42,6 +42,8 @@ pub struct Scene {
 pub struct Frame<'a> {
     pub plan: &'a Plan,
     pub selected: Option<usize>,
+    /// Selected walls (highlighted).
+    pub sel_walls: &'a [usize],
     pub hover: Option<(f64, f64)>,
     pub drag_ap: Option<usize>,
     /// Hovered AP (glow).
@@ -83,16 +85,28 @@ fn push_beam(g: &mut Geo, a: V, b: V, thick: f32, height: f32, col: V) {
     push_box(g, c, [x, y, z], [len + thick * 0.999, height, thick], col);
 }
 
-/// Wall solids, split into opaque and glass.
-pub fn wall_geo(plan: &Plan) -> (Geo, Geo) {
+/// Extruded height of a wall (m): doors are lower.
+pub fn wall_height(m: Material) -> f32 {
+    if m == Material::WoodDoor {
+        2.1
+    } else {
+        WALL_H
+    }
+}
+
+/// Wall solids, split into opaque and glass; selected walls are tinted with the accent colour.
+pub fn wall_geo(plan: &Plan, sel: &[usize]) -> (Geo, Geo) {
     let (mut opaque, mut glass) = (Geo::default(), Geo::default());
-    for w in &plan.walls {
+    for (i, w) in plan.walls.iter().enumerate() {
         let (col, t) = view::material_style(w.material);
+        let mut col = view::rgbf(col);
+        if sel.contains(&i) {
+            col = math::add(math::scale(col, 0.35), math::scale(ACCENT, 0.65));
+        }
         let a = view::cell_to_world(plan, w.x1, w.y1, 0.0);
         let b = view::cell_to_world(plan, w.x2, w.y2, 0.0);
         let g = if w.material == Material::Glass { &mut glass } else { &mut opaque };
-        let h = if w.material == Material::WoodDoor { 2.1 } else { WALL_H };
-        push_beam(g, a, b, t as f32, h, view::rgbf(col));
+        push_beam(g, a, b, t as f32, wall_height(w.material), col);
     }
     (opaque, glass)
 }
@@ -166,17 +180,17 @@ impl Scene {
         self.field = self.r.field_texture(self.field.take(), w, h, &data);
     }
 
-    fn sync_walls(&mut self, plan: &Plan) {
-        if self.built.as_ref().is_some_and(|(w, b)| *w == plan.walls && *b == bits(plan)) {
+    fn sync_walls(&mut self, plan: &Plan, sel: &[usize]) {
+        if self.built.as_ref().is_some_and(|(w, b, s)| *w == plan.walls && *b == bits(plan) && s == sel) {
             return;
         }
         for m in [self.opaque.take(), self.glass.take()].into_iter().flatten() {
             self.r.free(m);
         }
-        let (o, g) = wall_geo(plan);
+        let (o, g) = wall_geo(plan, sel);
         self.opaque = (!o.pos.is_empty()).then(|| self.r.mesh(&o)).flatten();
         self.glass = (!g.pos.is_empty()).then(|| self.r.mesh(&g)).flatten();
-        self.built = Some((plan.walls.clone(), bits(plan)));
+        self.built = Some((plan.walls.clone(), bits(plan), sel.to_vec()));
     }
 
     /// AP index under the screen ray (device body or its floor footprint).
@@ -231,7 +245,7 @@ impl Scene {
     /// Draw one frame into a `w × h` device-pixel viewport.
     pub fn draw(&mut self, f: &Frame, w: i32, h: i32, dt: f32) -> bool {
         let plan = f.plan;
-        self.sync_walls(plan);
+        self.sync_walls(plan, f.sel_walls);
         let moving = if self.mode == CamMode::Walk { false } else { self.orbit.step(dt) };
         let aspect = w as f32 / h.max(1) as f32;
         let (view, eye) = match self.mode {

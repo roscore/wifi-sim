@@ -18,8 +18,9 @@ use web_sys::{
     HtmlInputElement, HtmlSelectElement, ImageData, KeyboardEvent, PointerEvent, Url, WheelEvent,
 };
 use wifi_core::pdr::{calibrate_step, Mark, StepDetector, Walk};
+use wifi_core::edit::{self, Snap, SnapKind, SnapOpts, P};
 use wifi_core::{
-    calibrate, coverage, score, suggest_placement, Ap, Band, Coverage, Material, Measurement, Plan, Wall,
+    calibrate, coverage, score, suggest_placement, Ap, Band, Coverage, Material, Measurement, Plan, Wall, MAX_GRID,
 };
 
 const STORE_KEY: &str = "wifi-sim-plan";
@@ -34,6 +35,8 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("title", "Wi-Fi coverage simulator", "Wi-Fi 커버리지 시뮬레이터"),
     ("estimate", "Estimate only: real signal depends on furniture, people, devices and construction details.", "추정치일 뿐입니다. 실제 신호는 가구, 사람, 기기, 건물 구조에 따라 달라집니다."),
     ("lang", "한국어", "English"),
+    ("tool_select", "Select", "선택"),
+    ("tool_room", "Room", "방"),
     ("tool_wall", "Wall", "벽"),
     ("tool_ap", "AP", "AP"),
     ("tool_measure", "Measure", "실측"),
@@ -120,12 +123,15 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("walk_drift", " · heading drift {d}° on the last wall: tap Straighten or walk more slowly", " · 마지막 벽 방향 오차 {d}°: '직각 맞추기'를 누르거나 더 천천히 걸으세요"),
     ("lg_rssi", "≥ -50 excellent|-60 good|-67 fair|-70 weak|-80 poor|≤ -80 dead zone", "≥ -50 매우 좋음|-60 좋음|-67 보통|-70 약함|-80 나쁨|≤ -80 음영 지역"),
     ("lg_sinr", "≥ 25 dB excellent|17 good|11 fair|8 weak|0 poor|≤ 0 unusable", "≥ 25 dB 매우 좋음|17 좋음|11 보통|8 약함|0 나쁨|≤ 0 사용 불가"),
-    ("tip_wall", "Wall: drag to draw (pick a material in Materials)", "벽: 드래그해서 그리기 (재질은 '재질'에서 선택)"),
+    ("tip_select", "Select: click a wall to edit, drag to move, drag a corner to reshape, drag empty space to box-select", "선택: 벽을 클릭해 편집, 드래그로 이동, 모서리를 끌어 모양 변경, 빈 곳을 드래그해 여러 개 선택"),
+    ("tip_room", "Room: drag a rectangle = 4 walls (Shift = square)", "방: 사각형을 드래그하면 벽 4개 (Shift = 정사각형)"),
+    ("tip_wall", "Wall: click points to draw joined walls; double-click, Enter or the start point finishes", "벽: 점을 클릭해 이어진 벽 그리기. 더블클릭, Enter, 시작점 클릭으로 끝내기"),
+    ("tip_start", "Start: new plan, trace an image, examples", "시작: 새 평면도, 이미지 따라 그리기, 예제"),
     ("tip_ap", "AP: tap to add, drag to move (2D and 3D)", "AP: 탭하면 추가, 드래그하면 이동 (2D·3D)"),
     ("tip_measure", "Measure: tap and enter a measured dBm", "실측: 탭하고 측정한 dBm 입력"),
     ("tip_erase", "Eraser: tap a wall, AP or point", "지우개: 벽·AP·측정점을 탭"),
     ("tip_undo", "Undo (Ctrl+Z)", "실행 취소 (Ctrl+Z)"),
-    ("tip_redo", "Redo (Ctrl+Shift+Z)", "다시 실행 (Ctrl+Shift+Z)"),
+    ("tip_redo", "Redo (Ctrl+Y / Ctrl+Shift+Z)", "다시 실행 (Ctrl+Y / Ctrl+Shift+Z)"),
     ("tip_clear", "Clear everything", "모두 지우기"),
     ("tip_panel", "Show / hide settings", "설정 보이기 / 숨기기"),
     ("settings", "Settings", "설정"),
@@ -139,7 +145,39 @@ const STRINGS: &[(&str, &str, &str)] = &[
     ("no_webgl", "3D needs WebGL2, which is not available in this browser. Staying in 2D.", "3D 보기에는 WebGL2가 필요한데 이 브라우저에서는 쓸 수 없습니다. 2D로 계속합니다."),
     ("walk3d_hint", "WASD / arrow keys to move (Shift = faster), drag to look. Touch: one finger looks, two fingers move.", "WASD / 화살표로 이동 (Shift = 빠르게), 드래그로 둘러보기. 터치: 한 손가락은 보기, 두 손가락은 이동."),
     ("hint_title", "Welcome!", "환영합니다!"),
-    ("hint_body", "This is a sample apartment. Drag the glowing AP to watch the coverage update live, draw walls with the Wall tool, or switch to 3D at the top. Settings are on the right.", "샘플 아파트입니다. 빛나는 AP를 드래그하면 커버리지가 실시간으로 바뀌고, 벽 도구로 벽을 그릴 수 있으며, 위쪽에서 3D로 전환할 수 있습니다. 설정은 오른쪽에 있습니다."),
+    ("hint_body", "This is a sample. Drag the glowing AP to watch the coverage update live, click a wall with the Select tool to move or edit it, or draw rooms with the Room tool. 3D is at the top, settings on the right.", "예제 평면도입니다. 빛나는 AP를 드래그하면 커버리지가 실시간으로 바뀌고, 선택 도구로 벽을 클릭해 옮기거나 고칠 수 있으며, 방 도구로 방을 그릴 수 있습니다. 위쪽에서 3D로 전환하고, 설정은 오른쪽에 있습니다."),
+    ("start_title", "Let's start", "시작해 볼까요"),
+    ("start_sub", "How do you want to make your floor plan?", "평면도를 어떻게 만들까요?"),
+    ("start_draw", "Draw my home", "우리 집 그리기"),
+    ("start_draw_d", "Empty plan: drag rooms, then add doors and windows.", "빈 평면도에서 방을 드래그하고 문·창문을 넣습니다."),
+    ("start_size", "Size (m)", "크기 (m)"),
+    ("start_go", "Start drawing", "그리기 시작"),
+    ("start_trace", "Trace a floor-plan image", "평면도 이미지 따라 그리기"),
+    ("start_trace_d", "Pick a picture of your plan, click two points and type their real distance, then draw over it.", "평면도 사진을 고르고, 두 점을 클릭해 실제 거리를 입력한 뒤 그 위에 그립니다."),
+    ("start_walk", "Walk mode (phone)", "걸어서 그리기 (휴대폰)"),
+    ("start_walk_d", "Walk along the walls holding your phone.", "휴대폰을 들고 벽을 따라 걷습니다."),
+    ("start_example", "Load an example", "예제 불러오기"),
+    ("start_drawn", "Empty {w} × {h} m plan. Drag a rectangle for each room.", "{w} × {h} m 빈 평면도입니다. 방마다 사각형을 드래그하세요."),
+    ("snap_grid", "Grid 0.1 m", "격자 0.1 m"),
+    ("draw_done", "Done", "완료"),
+    ("hint_room", "Drag a rectangle for a room · Shift or a second finger = square", "사각형을 드래그해 방 만들기 · Shift 또는 두 번째 손가락 = 정사각형"),
+    ("hint_wall", "Click points · double-click, Enter or the start point = finish · Esc = stop · type a number = exact length · Alt = no angle snap", "점을 클릭 · 더블클릭, Enter, 시작점 = 끝내기 · Esc = 멈춤 · 숫자 입력 = 정확한 길이 · Alt = 각도 스냅 끄기"),
+    ("hint_typed", "Length {v} m · Enter to place", "길이 {v} m · Enter로 확정"),
+    ("hint_calib", "Scale: click two points whose real distance you know ({n}/2)", "축척: 실제 거리를 아는 두 점을 클릭하세요 ({n}/2)"),
+    ("calib_prompt", "Real distance between the two points (m):", "두 점 사이의 실제 거리 (m):"),
+    ("calib_short", "The two points are too close together. Try again.", "두 점이 너무 가깝습니다. 다시 해 보세요."),
+    ("calib_done", "Scale set: 1 cell = {cm} cm, plan {w} × {h} m. Now trace the walls.", "축척 설정: 1칸 = {cm} cm, 평면도 {w} × {h} m. 이제 벽을 따라 그리세요."),
+    ("bg_scale", "Set scale (2 clicks)", "축척 맞추기 (2번 클릭)"),
+    ("wp_one", "1 wall selected", "벽 1개 선택"),
+    ("wp_many", "{n} walls selected", "벽 {n}개 선택"),
+    ("wp_len", "Length (m)", "길이 (m)"),
+    ("wp_thick", "Drawn about {cm} cm thick (display only: the loss comes from the material).", "두께 약 {cm} cm로 표시 (표시용, 감쇠는 재질로 정해집니다)."),
+    ("wp_split", "Split here", "여기서 나누기"),
+    ("wp_door", "Add door here", "여기에 문"),
+    ("wp_window", "Add window here", "여기에 창문"),
+    ("wp_dup", "Duplicate", "복제"),
+    ("wp_del", "Delete", "삭제"),
+    ("wp_keys", "Drag to move · drag a corner to reshape (Alt = detach) · arrows nudge · Del deletes · Ctrl+D duplicates", "드래그 = 이동 · 모서리 드래그 = 모양 변경 (Alt = 떼어내기) · 화살표 = 미세 이동 · Del = 삭제 · Ctrl+D = 복제"),
     ("hint_ok", "Got it", "알겠어요"),
     ("rays_hud", "Ray from AP {i}: {n} wall(s), {db} dB", "AP {i}에서의 광선: 벽 {n}개, {db} dB"),
     ("legend_rssi", "Signal (dBm)", "신호 세기 (dBm)"),
@@ -153,17 +191,52 @@ fn mat_key(m: Material) -> &'static str {
     ["drywall", "wood_door", "glass", "brick", "concrete", "metal", "mirror"][m.idx()]
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Tool {
+    Select,
+    Room,
     Wall,
     Ap,
     Measure,
     Erase,
 }
 
+/// `data-tool` names, in `Tool` order.
+const TOOL_NAMES: [&str; 6] = ["select", "room", "wall", "ap", "measure", "erase"];
+
+fn tool_from_name(s: &str) -> Option<Tool> {
+    const ALL: [Tool; 6] = [Tool::Select, Tool::Room, Tool::Wall, Tool::Ap, Tool::Measure, Tool::Erase];
+    TOOL_NAMES.iter().position(|n| *n == s).map(|i| ALL[i])
+}
+
+/// Opening widths (m) for "Add door / window here".
+const DOOR_M: f64 = 0.9;
+const WINDOW_M: f64 = 1.2;
+/// Magnet radius for endpoint / on-wall snapping (m).
+const MAGNET_M: f64 = 0.3;
+const GRID_M: f64 = 0.1;
+
 enum Drag {
-    Wall { start: (f64, f64), cur: (f64, f64) },
     Ap { idx: usize, moved: bool },
+    /// Room tool rectangle; `finger` = a second finger is down (square).
+    Room { start: P, cur: P, square: bool, finger: bool },
+    /// Wall tool press: the point is placed on release.
+    Point,
+    /// Select tool: move the selected walls (neighbours' joined ends follow unless Alt).
+    Move { origin: P, moved: bool },
+    /// Select tool: drag a joint (all coinciding endpoints, or one with Alt).
+    Joint { ends: Vec<edit::End>, anchor: P, moved: bool },
+    Box { start: P, cur: P, add: bool },
+}
+
+/// Wall-tool polyline in progress. Segments are committed to the plan as they are placed
+/// (one undo snapshot for the whole polyline).
+struct Poly {
+    pts: Vec<P>,
+    cur: P,
+    /// Digits typed for an exact segment length (m).
+    typed: String,
+    walls: Vec<usize>,
 }
 
 /// Gesture on the 3D canvas.
@@ -173,6 +246,8 @@ enum Drag3 {
     Pan,
     Look,
     Ap { idx: usize, moved: bool },
+    /// Move the selected walls along the horizontal plane at height `h` (m) where they were grabbed.
+    Walls { origin: P, h: f32, moved: bool },
     /// Two pointers: pinch-zoom + pan (orbit cams) or move (walk-through).
     Two,
 }
@@ -208,6 +283,23 @@ struct App {
     material: Material,
     ko: bool,
     selected: Option<usize>,
+    /// Selected walls (Select tool, also in 3D).
+    sel_walls: Vec<usize>,
+    /// Where the selected wall was last clicked: "Split here" / "Add door here".
+    sel_at: Option<P>,
+    poly: Option<Poly>,
+    snap_mark: Option<Snap>,
+    grid_snap: bool,
+    hover_wall: Option<usize>,
+    hover_end: Option<P>,
+    /// Pointer that owns the current 2D gesture (a second finger only modifies it).
+    primary: Option<i32>,
+    /// Two-click scale calibration in progress (points so far).
+    calib: Option<Vec<P>>,
+    /// The next background image starts "trace" mode.
+    trace_pending: bool,
+    /// Walls when the current wall drag started (each move re-applies from here: no drift).
+    edit_base: Vec<Wall>,
     drag: Option<Drag>,
     hover: Option<(f64, f64)>,
     sinr_view: bool,
@@ -316,11 +408,14 @@ fn storage() -> Option<web_sys::Storage> {
 fn fmt(t: &str, args: &[(&str, String)]) -> String {
     args.iter().fold(t.to_string(), |s, (k, v)| s.replace(&format!("{{{k}}}"), v))
 }
-fn dist_point_seg(p: (f64, f64), w: &Wall) -> f64 {
-    let (dx, dy) = (w.x2 - w.x1, w.y2 - w.y1);
-    let l2 = dx * dx + dy * dy;
-    let t = if l2 > 0.0 { (((p.0 - w.x1) * dx + (p.1 - w.y1) * dy) / l2).clamp(0.0, 1.0) } else { 0.0 };
-    (p.0 - w.x1 - t * dx).hypot(p.1 - w.y1 - t * dy)
+fn show(id: &str, on: bool) {
+    let _ = el::<Element>(id).class_list().toggle_with_force("show", on);
+}
+fn dist(a: P, b: P) -> f64 {
+    (a.0 - b.0).hypot(a.1 - b.1)
+}
+fn parse_num(s: &str) -> Option<f64> {
+    s.trim().replace(',', ".").parse::<f64>().ok().filter(|v| v.is_finite())
 }
 fn rgba(c: [u8; 3], a: f64) -> String {
     format!("rgba({},{},{},{a})", c[0], c[1], c[2])
@@ -354,6 +449,21 @@ impl App {
         if self.selected.is_some_and(|i| i >= self.plan.aps.len()) {
             self.selected = None;
         }
+        // wall indices may mean other walls now
+        self.sel_walls.clear();
+        self.sel_at = None;
+        self.poly = None;
+        self.snap_mark = None;
+        self.hover_wall = None;
+        self.hover_end = None;
+        if matches!(self.drag, Some(Drag::Move { .. } | Drag::Joint { .. } | Drag::Point)) {
+            self.drag = None;
+        }
+        if matches!(self.drag3, Some(Drag3::Walls { .. })) {
+            self.drag3 = None;
+        }
+        self.render_drawbar();
+        self.render_wallpanel();
         self.sync_inputs();
         self.resize();
         self.recompute();
@@ -401,7 +511,8 @@ impl App {
     }
 
     fn dragging(&self) -> bool {
-        matches!(self.drag, Some(Drag::Ap { .. })) || matches!(self.drag3, Some(Drag3::Ap { .. }))
+        matches!(self.drag, Some(Drag::Ap { .. } | Drag::Move { .. } | Drag::Joint { .. }))
+            || matches!(self.drag3, Some(Drag3::Ap { .. } | Drag3::Walls { .. }))
     }
 
     fn save(&self) {
@@ -412,6 +523,9 @@ impl App {
 
     fn recompute(&mut self) {
         self.dirty_cov = false;
+        let n = self.plan.walls.len();
+        self.sel_walls.retain(|&i| i < n);
+        self.render_wallpanel();
         let t0 = now();
         self.cov = coverage(&self.plan);
         self.ms = now() - t0;
@@ -475,11 +589,12 @@ impl App {
         // the top row wraps on narrow screens: lay out below wherever it ends
         let top = el::<Element>("top").get_bounding_client_rect().bottom().max(40.0);
         let _ = body().style().set_property("--top-h", &format!("{top:.0}px"));
+        // the drawing hint bar gets its own strip (top on desktop, above the toolbar on phones)
         let (l, r, t, b) = if self.mobile() {
-            (12.0, 12.0, top + 64.0, 180.0)
+            (12.0, 12.0, top + 64.0, 224.0)
         } else {
             let panel = if has_body_class("panel-open") { 364.0 } else { 16.0 };
-            (72.0, panel, top + 12.0, 84.0)
+            (72.0, panel, top + 58.0, 84.0)
         };
         let (x, y, w, h) =
             view::fit_rect(l, t, (sw - l - r).max(80.0), (sh - t - b).max(80.0), self.plan.width as f64, self.plan.height as f64);
@@ -595,8 +710,51 @@ impl App {
             c.set_line_width(width);
             c.stroke();
         };
+        let line = |a: P, b: P| {
+            c.begin_path();
+            c.move_to(a.0, a.1);
+            c.line_to(b.0, b.1);
+            c.stroke();
+        };
+        let thick = |m: Material| (view::material_style(m).1 / self.plan.cell_m).max(lw(2.5));
+        // selection glow under the walls, hover highlight
+        for wl in self.sel_walls.iter().filter_map(|&i| self.plan.walls.get(i)) {
+            c.set_stroke_style_str("rgba(76,199,255,0.38)");
+            c.set_line_width(thick(wl.material) + lw(9.0));
+            line((wl.x1, wl.y1), (wl.x2, wl.y2));
+        }
+        if let Some(wl) = self.hover_wall.filter(|i| !self.sel_walls.contains(i)).and_then(|i| self.plan.walls.get(i)) {
+            c.set_stroke_style_str("rgba(255,255,255,0.22)");
+            c.set_line_width(thick(wl.material) + lw(7.0));
+            line((wl.x1, wl.y1), (wl.x2, wl.y2));
+        }
         for wl in &self.plan.walls {
             wall((wl.x1, wl.y1), (wl.x2, wl.y2), wl.material, 1.0);
+        }
+        let ring = |p: P, r: f64, fill: Option<&str>, stroke: &str| {
+            c.begin_path();
+            let _ = c.arc(p.0, p.1, r, 0.0, tau);
+            if let Some(f) = fill {
+                c.set_fill_style_str(f);
+                c.fill();
+            }
+            c.set_stroke_style_str(stroke);
+            c.set_line_width(lw(2.0));
+            c.stroke();
+        };
+        // selected: accent centre line + endpoint handles
+        for wl in self.sel_walls.iter().filter_map(|&i| self.plan.walls.get(i)) {
+            c.set_stroke_style_str("#4cc7ff");
+            c.set_line_width(lw(1.5));
+            line((wl.x1, wl.y1), (wl.x2, wl.y2));
+        }
+        for wl in self.sel_walls.iter().filter_map(|&i| self.plan.walls.get(i)) {
+            for b in [false, true] {
+                ring(edit::end_pos(wl, b), lw(5.0), Some("#ffffff"), "#1a7fb8");
+            }
+        }
+        if let Some(p) = self.hover_end {
+            ring(p, lw(8.0), None, "rgba(255,255,255,0.9)");
         }
 
         let font = |px: f64, weight: u32| format!("{weight} {}px system-ui, sans-serif", lw(px));
@@ -618,11 +776,87 @@ impl App {
             let _ = c.fill_text(text, x, y + lw(0.5));
         };
 
-        if let Some(Drag::Wall { start, cur }) = &self.drag {
-            wall(*start, *cur, self.material, 0.7);
-            let len = (cur.0 - start.0).hypot(cur.1 - start.1) * self.plan.cell_m;
-            let mid = ((start.0 + cur.0) / 2.0, (start.1 + cur.1) / 2.0 - lw(16.0));
-            pill(&format!("{len:.2} m"), mid.0, mid.1, "#04121c", "rgba(76,199,255,0.95)");
+        let cm = self.plan.cell_m;
+        let len_pill = |a: P, b: P, text: &str| {
+            let mid = ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0 - lw(16.0));
+            pill(text, mid.0, mid.1, "#04121c", "rgba(76,199,255,0.95)");
+        };
+        match &self.drag {
+            Some(Drag::Room { start, cur, square, .. }) => {
+                let corner = if *square { edit::square_corner(*start, *cur) } else { *cur };
+                for wl in edit::room(*start, corner, self.material) {
+                    wall((wl.x1, wl.y1), (wl.x2, wl.y2), wl.material, 0.75);
+                }
+                let (wm, hm) = ((corner.0 - start.0).abs() * cm, (corner.1 - start.1).abs() * cm);
+                let mid = ((start.0 + corner.0) / 2.0, (start.1 + corner.1) / 2.0);
+                pill(&format!("{wm:.2} × {hm:.2} m"), mid.0, mid.1, "#04121c", "rgba(76,199,255,0.95)");
+            }
+            Some(Drag::Joint { ends, .. }) => {
+                for wl in ends.iter().filter_map(|e| self.plan.walls.get(e.wall)) {
+                    len_pill((wl.x1, wl.y1), (wl.x2, wl.y2), &format!("{:.2} m", edit::length(wl) * cm));
+                }
+            }
+            Some(Drag::Box { start, cur, .. }) => {
+                let (x, y) = (start.0.min(cur.0), start.1.min(cur.1));
+                let (bw, bh) = ((start.0 - cur.0).abs(), (start.1 - cur.1).abs());
+                c.set_fill_style_str("rgba(76,199,255,0.08)");
+                c.fill_rect(x, y, bw, bh);
+                let _ = c.set_line_dash(&js_sys::Array::of2(&lw(5.0).into(), &lw(4.0).into()));
+                c.set_stroke_style_str("rgba(76,199,255,0.9)");
+                c.set_line_width(lw(1.2));
+                c.stroke_rect(x, y, bw, bh);
+                let _ = c.set_line_dash(&js_sys::Array::new());
+            }
+            _ => {}
+        }
+        // polyline in progress: rubber band with live / typed length, start point to close
+        if let Some(poly) = &self.poly {
+            ring(poly.pts[0], lw(6.0), Some("rgba(76,199,255,0.35)"), "#4cc7ff");
+            if let (Some(&last), Some(t)) = (poly.pts.last(), self.poly_target()) {
+                if dist(last, t) > 1e-6 {
+                    wall(last, t, self.material, 0.6);
+                    let text = if poly.typed.is_empty() {
+                        format!("{:.2} m", dist(last, t) * cm)
+                    } else {
+                        format!("{} m ⏎", poly.typed)
+                    };
+                    len_pill(last, t, &text);
+                }
+            }
+        }
+        // snap marker: square = endpoint, diamond = on a wall, dot = grid
+        if let Some(s) = self.snap_mark {
+            let (p, r) = (s.p, lw(6.0));
+            c.set_stroke_style_str("#ffd166");
+            c.set_line_width(lw(2.0));
+            match s.kind {
+                SnapKind::Endpoint => c.stroke_rect(p.0 - r, p.1 - r, 2.0 * r, 2.0 * r),
+                SnapKind::OnWall => {
+                    c.begin_path();
+                    c.move_to(p.0, p.1 - r);
+                    c.line_to(p.0 + r, p.1);
+                    c.line_to(p.0, p.1 + r);
+                    c.line_to(p.0 - r, p.1);
+                    c.close_path();
+                    c.stroke();
+                }
+                SnapKind::Grid | SnapKind::Angle => ring(p, lw(2.5), Some("#ffd166"), "#ffd166"),
+                SnapKind::None => {}
+            }
+        }
+        // scale calibration points
+        if let Some(pts) = &self.calib {
+            let end = pts.first().and(self.hover);
+            if let (Some(&a), Some(b)) = (pts.first(), end) {
+                let _ = c.set_line_dash(&js_sys::Array::of2(&lw(5.0).into(), &lw(4.0).into()));
+                c.set_stroke_style_str("#ffd166");
+                c.set_line_width(lw(1.5));
+                line(a, b);
+                let _ = c.set_line_dash(&js_sys::Array::new());
+            }
+            for &p in pts {
+                ring(p, lw(5.0), Some("#ffd166"), "#04121c");
+            }
         }
 
         // signal ray (selected AP → cursor) or a distance guide to the serving AP
@@ -811,10 +1045,15 @@ impl App {
     }
 
     fn render_chips(&self) {
-        let html: String = Material::ALL
+        el::<Element>("mat-chips").set_inner_html(&self.chips_html(Some(self.material)));
+        self.render_wallpanel();
+    }
+
+    fn chips_html(&self, active: Option<Material>) -> String {
+        Material::ALL
             .iter()
             .map(|&m| {
-                let on = m == self.material;
+                let on = Some(m) == active;
                 format!(
                     "<button class=\"mchip{}\" role=\"radio\" aria-checked=\"{on}\" data-mat=\"{}\"><i style=\"background:{}\"></i>{}</button>",
                     if on { " active" } else { "" },
@@ -823,8 +1062,45 @@ impl App {
                     self.tr(mat_key(m)),
                 )
             })
-            .collect();
-        el::<Element>("mat-chips").set_inner_html(&html);
+            .collect()
+    }
+
+    /// Floating panel for the selected walls.
+    fn render_wallpanel(&self) {
+        let n = self.sel_walls.len();
+        body_class("has-sel", n > 0);
+        if n == 0 {
+            return;
+        }
+        let title = if n == 1 { self.tr("wp_one").to_string() } else { fmt(self.tr("wp_many"), &[("n", n.to_string())]) };
+        el::<Element>("wp-title").set_text_content(Some(&title));
+        let mats: Vec<Material> = self.sel_walls.iter().filter_map(|&i| self.plan.walls.get(i)).map(|w| w.material).collect();
+        let common = mats.first().copied().filter(|m| mats.iter().all(|x| x == m));
+        el::<Element>("wp-mats").set_inner_html(&self.chips_html(common));
+        let single = self.single_sel();
+        let _ = el::<Element>("wallpanel").class_list().toggle_with_force("multi", single.is_none());
+        if let Some(w) = single.and_then(|i| self.plan.walls.get(i)) {
+            let focused = doc().active_element().is_some_and(|e| e.id() == "wp-len");
+            if !focused {
+                el::<HtmlInputElement>("wp-len").set_value(&format!("{:.2}", edit::length(w) * self.plan.cell_m));
+            }
+            let cm = view::material_style(w.material).1 * 100.0;
+            el::<Element>("wp-thick").set_text_content(Some(&fmt(self.tr("wp_thick"), &[("cm", format!("{cm:.0}"))])));
+        }
+    }
+
+    /// Hint bar shown while a drawing tool (or the scale calibration) is active.
+    fn render_drawbar(&self) {
+        let drawing = matches!(self.tool, Tool::Room | Tool::Wall) || self.calib.is_some();
+        body_class("drawing", drawing && !self.mode3d);
+        body_class("poly-on", self.poly.is_some());
+        let text = match (&self.calib, self.tool, &self.poly) {
+            (Some(c), _, _) => fmt(self.tr("hint_calib"), &[("n", c.len().to_string())]),
+            (None, Tool::Room, _) => self.tr("hint_room").to_string(),
+            (None, _, Some(p)) if !p.typed.is_empty() => fmt(self.tr("hint_typed"), &[("v", p.typed.clone())]),
+            _ => self.tr("hint_wall").to_string(),
+        };
+        el::<Element>("draw-hint").set_text_content(Some(&text));
     }
 
     fn apply_lang(&self) {
@@ -850,6 +1126,7 @@ impl App {
         self.render_status();
         self.render_walk();
         self.render_readout();
+        self.render_drawbar();
     }
 
     fn render_status(&self) {
@@ -876,15 +1153,26 @@ impl App {
     }
 
     fn set_tool(&mut self, t: Tool) {
+        if t != Tool::Wall {
+            self.finish_poly(); // may switch to Select itself
+        }
+        if t != Tool::Select {
+            self.sel_walls.clear();
+        }
         self.tool = t;
+        self.snap_mark = None;
+        self.hover_wall = None;
+        self.hover_end = None;
         let nodes = doc().query_selector_all("[data-tool]").unwrap();
-        let names = ["wall", "ap", "measure", "erase"];
         for i in 0..nodes.length() {
             let e: Element = nodes.get(i).unwrap().dyn_into().unwrap();
-            let on = e.get_attribute("data-tool").as_deref() == Some(names[t as usize]);
+            let on = e.get_attribute("data-tool").as_deref() == Some(TOOL_NAMES[t as usize]);
             e.class_list().toggle_with_force("active", on).unwrap();
             let _ = e.set_attribute("aria-pressed", if on { "true" } else { "false" });
         }
+        self.render_drawbar();
+        self.render_wallpanel();
+        self.render();
     }
 
     fn hit_ap(&self, p: (f64, f64)) -> Option<usize> {
@@ -908,17 +1196,10 @@ impl App {
         } else if let Some(i) = self.plan.measurements.iter().position(|m| (m.x - p.0).hypot(m.y - p.1) <= tol) {
             self.snapshot();
             self.plan.measurements.remove(i);
-        } else if let Some((i, _)) = self
-            .plan
-            .walls
-            .iter()
-            .enumerate()
-            .map(|(i, w)| (i, dist_point_seg(p, w)))
-            .filter(|(_, d)| *d <= tol)
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-        {
+        } else if let Some(i) = edit::nearest_wall(&self.plan.walls, p, tol) {
             self.snapshot();
             self.plan.walls.remove(i);
+            self.sel_walls.clear();
         } else {
             return;
         }
@@ -936,22 +1217,91 @@ impl App {
         }
     }
 
+    // ---------- 2D editing ----------
+
+    /// Snap magnet radius in cells: ~0.3 m, kept usable at any zoom.
+    fn magnet(&self) -> f64 {
+        (MAGNET_M / self.plan.cell_m).clamp(self.px(6.0), self.px(30.0))
+    }
+
+    fn grid(&self) -> Option<f64> {
+        self.grid_snap.then(|| GRID_M / self.plan.cell_m)
+    }
+
+    fn clamp_pt(&self, p: P) -> P {
+        (p.0.clamp(0.0, self.plan.width as f64), p.1.clamp(0.0, self.plan.height as f64))
+    }
+
+    fn snap_in(&self, walls: &[Wall], raw: P, from: Option<P>, alt: bool, skip: impl Fn(usize) -> bool) -> Snap {
+        let o = SnapOpts { radius: self.magnet(), grid: self.grid(), from, angle: !alt };
+        let s = edit::snap(walls, raw, &o, skip);
+        Snap { p: self.clamp_pt(s.p), ..s }
+    }
+
+    fn snap_at(&self, raw: P, from: Option<P>, alt: bool) -> Snap {
+        self.snap_in(&self.plan.walls, raw, from, alt, |_| false)
+    }
+
+    fn single_sel(&self) -> Option<usize> {
+        match self.sel_walls[..] {
+            [i] if i < self.plan.walls.len() => Some(i),
+            _ => None,
+        }
+    }
+
+    fn set_cursor(&self, c: &str) {
+        let _ = self.canvas.style().set_property("cursor", c);
+    }
+
     fn pointer_down(&mut self, e: &PointerEvent) {
-        let p = self.to_cell(e);
+        if self.primary.is_some_and(|id| id != e.pointer_id()) && self.drag.is_some() {
+            // a second finger: square room
+            if let Some(Drag::Room { finger, square, .. }) = &mut self.drag {
+                *finger = true;
+                *square = true;
+                self.render();
+            }
+            return;
+        }
+        self.primary = Some(e.pointer_id());
+        let raw = self.to_cell(e);
+        let (shift, alt) = (e.shift_key(), e.alt_key());
+        if let Some(pts) = &mut self.calib {
+            pts.push(raw);
+            if pts.len() >= 2 {
+                self.finish_calib();
+            } else {
+                self.render_drawbar();
+                self.render();
+            }
+            return;
+        }
         match self.tool {
+            Tool::Select => self.select_down(raw, shift, alt),
+            Tool::Room => {
+                let s = self.snap_at(raw, None, alt).p;
+                self.drag = Some(Drag::Room { start: s, cur: s, square: shift, finger: false });
+            }
             Tool::Wall => {
-                let s = (p.0.round(), p.1.round());
-                self.drag = Some(Drag::Wall { start: s, cur: s });
+                if self.poly.is_none() {
+                    let s = self.snap_at(raw, None, alt).p;
+                    self.poly = Some(Poly { pts: vec![s], cur: s, typed: String::new(), walls: Vec::new() });
+                    self.render_drawbar();
+                } else {
+                    self.poly_track(raw, alt);
+                }
+                self.drag = Some(Drag::Point);
+                self.render();
             }
             Tool::Ap => {
                 self.snapshot();
-                let idx = match self.hit_ap(p) {
+                let idx = match self.hit_ap(raw) {
                     Some(i) => {
                         self.drag = Some(Drag::Ap { idx: i, moved: false });
                         i
                     }
                     None => {
-                        let ap = self.ap_from_inputs(p.0, p.1);
+                        let ap = self.ap_from_inputs(raw.0, raw.1);
                         self.plan.aps.push(ap);
                         self.drag = Some(Drag::Ap { idx: self.plan.aps.len() - 1, moved: true });
                         self.plan.aps.len() - 1
@@ -961,53 +1311,513 @@ impl App {
                 self.sync_inputs();
                 self.recompute();
             }
-            Tool::Measure => self.measure_at(p),
-            Tool::Erase => self.erase_at(p),
+            Tool::Measure => self.measure_at(raw),
+            Tool::Erase => self.erase_at(raw),
         }
     }
 
-    fn pointer_move(&mut self, e: &PointerEvent) {
-        let p = self.to_cell(e);
-        self.hover = Some(p);
-        match &mut self.drag {
-            Some(Drag::Wall { start, cur }) => {
-                let mut c = (p.0.round(), p.1.round());
-                // snap near-axis walls to horizontal / vertical
-                if (c.1 - start.1).abs() < 0.2 * (c.0 - start.0).abs() {
-                    c.1 = start.1;
-                } else if (c.0 - start.0).abs() < 0.2 * (c.1 - start.1).abs() {
-                    c.0 = start.0;
+    /// Select tool press: AP drag, joint (corner) drag, wall move, or box select.
+    fn select_down(&mut self, raw: P, shift: bool, alt: bool) {
+        if let Some(i) = self.hit_ap(raw) {
+            self.snapshot();
+            self.drag = Some(Drag::Ap { idx: i, moved: false });
+            self.selected = Some(i);
+            self.sel_walls.clear();
+            self.sync_inputs();
+            self.render_wallpanel();
+            self.render();
+            return;
+        }
+        let walls = &self.plan.walls;
+        if let Some((end, q)) = edit::nearest_end(walls, raw, self.px(9.0), |_| false) {
+            let ends = if alt { vec![end] } else { edit::ends_at(walls, q, edit::JOINT_EPS) };
+            let anchor = edit::end_pos(&walls[end.wall], !end.b);
+            if !self.sel_walls.contains(&end.wall) {
+                if !shift {
+                    self.sel_walls.clear();
                 }
-                *cur = c;
-                self.render();
+                self.sel_walls.push(end.wall);
             }
+            self.sel_at = None;
+            self.edit_base = self.plan.walls.clone();
+            self.drag = Some(Drag::Joint { ends, anchor, moved: false });
+            self.set_cursor("grabbing");
+        } else if let Some(i) = edit::nearest_wall(walls, raw, self.px(12.0)) {
+            self.sel_at = Some(edit::project(&walls[i], raw).1);
+            if shift && self.sel_walls.contains(&i) {
+                self.sel_walls.retain(|&k| k != i);
+            } else {
+                if !shift && !self.sel_walls.contains(&i) {
+                    self.sel_walls.clear();
+                }
+                if !self.sel_walls.contains(&i) {
+                    self.sel_walls.push(i);
+                }
+                self.edit_base = self.plan.walls.clone();
+                self.drag = Some(Drag::Move { origin: raw, moved: false });
+            }
+        } else {
+            self.drag = Some(Drag::Box { start: raw, cur: raw, add: shift });
+        }
+        self.render_wallpanel();
+        self.render();
+    }
+
+    /// Updates the polyline's rubber-band end from the pointer.
+    fn poly_track(&mut self, raw: P, alt: bool) {
+        let Some(last) = self.poly.as_ref().and_then(|p| p.pts.last().copied()) else { return };
+        let s = self.snap_at(raw, Some(last), alt);
+        self.snap_mark = Some(s);
+        if let Some(p) = &mut self.poly {
+            p.cur = s.p;
+        }
+    }
+
+    /// End of the segment being drawn: the pointer, or the typed exact length along its direction.
+    fn poly_target(&self) -> Option<P> {
+        let p = self.poly.as_ref()?;
+        let last = *p.pts.last()?;
+        match parse_num(&p.typed).filter(|v| *v > 0.0) {
+            Some(m) => Some(self.clamp_pt(edit::at_length(last, p.cur, m / self.plan.cell_m))),
+            None => Some(p.cur),
+        }
+    }
+
+    /// Places a polyline point: a joined wall from the previous point. A click on the previous
+    /// point (double-click) finishes, a click on the start point closes and finishes.
+    fn poly_add(&mut self, p: P) {
+        let tol = self.px(4.0).max(edit::JOINT_EPS);
+        let Some(mut poly) = self.poly.take() else { return };
+        let last = *poly.pts.last().unwrap();
+        if dist(p, last) <= tol {
+            self.poly = Some(poly);
+            return self.finish_poly();
+        }
+        if poly.walls.is_empty() {
+            self.snapshot(); // the whole polyline is one undo step
+        }
+        let material = self.material;
+        self.plan.walls.push(Wall { x1: last.0, y1: last.1, x2: p.0, y2: p.1, material });
+        poly.walls.push(self.plan.walls.len() - 1);
+        poly.pts.push(p);
+        poly.typed.clear();
+        let closed = poly.pts.len() > 2 && dist(p, poly.pts[0]) <= edit::JOINT_EPS;
+        poly.cur = p;
+        self.poly = Some(poly);
+        self.recompute();
+        self.render_drawbar();
+        if closed {
+            self.finish_poly();
+        }
+    }
+
+    /// Ends the polyline; what was drawn becomes the selection (Select tool).
+    fn finish_poly(&mut self) {
+        let Some(poly) = self.poly.take() else { return };
+        self.snap_mark = None;
+        if !poly.walls.is_empty() {
+            self.set_tool(Tool::Select);
+            self.sel_walls = poly.walls;
+            self.sel_at = None;
+        }
+        self.render_drawbar();
+        self.render_wallpanel();
+        self.render();
+    }
+
+    fn pointer_move(&mut self, e: &PointerEvent) {
+        if self.primary.is_some_and(|id| id != e.pointer_id()) {
+            return;
+        }
+        let raw = self.to_cell(e);
+        self.hover = Some(raw);
+        let (shift, alt) = (e.shift_key(), e.alt_key());
+        let (pw, ph) = (self.plan.width as f64, self.plan.height as f64);
+        let mut drag = self.drag.take();
+        match &mut drag {
+            Some(Drag::Room { cur, square, finger, .. }) => {
+                *cur = self.snap_at(raw, None, alt).p;
+                *square = shift || *finger;
+            }
+            Some(Drag::Point) => self.poly_track(raw, alt),
             Some(Drag::Ap { idx, moved }) => {
                 *moved = true;
                 let i = *idx;
-                self.plan.aps[i].x = p.0.min(self.plan.width as f64 - 0.01);
-                self.plan.aps[i].y = p.1.min(self.plan.height as f64 - 0.01);
+                self.plan.aps[i].x = raw.0.min(pw - 0.01);
+                self.plan.aps[i].y = raw.1.min(ph - 0.01);
                 self.dirty_cov = true; // recomputed once per animation frame
             }
-            None => self.render(),
+            Some(Drag::Move { origin, moved }) => {
+                let mut d = (raw.0 - origin.0, raw.1 - origin.1);
+                if let Some(g) = self.grid() {
+                    d = ((d.0 / g).round() * g, (d.1 / g).round() * g);
+                }
+                let d = edit::clamp_delta(&self.edit_base, &self.sel_walls, d, pw, ph);
+                let mut walls = self.edit_base.clone();
+                edit::move_walls(&mut walls, &self.sel_walls, d, edit::JOINT_EPS, alt);
+                self.apply_drag_walls(walls, moved);
+            }
+            Some(Drag::Joint { ends, anchor, moved }) => {
+                let skip: Vec<usize> = ends.iter().map(|e| e.wall).collect();
+                let s = self.snap_in(&self.edit_base, raw, Some(*anchor), alt, |i| skip.contains(&i));
+                self.snap_mark = Some(s);
+                let mut walls = self.edit_base.clone();
+                edit::move_ends(&mut walls, ends, s.p);
+                self.apply_drag_walls(walls, moved);
+            }
+            Some(Drag::Box { cur, .. }) => *cur = raw,
+            None => self.update_hover(raw, alt),
+        }
+        self.drag = drag;
+        if !self.dirty_cov {
+            self.render();
         }
         self.render_readout();
     }
 
-    fn pointer_up(&mut self) {
+    /// Live wall drag: the undo snapshot is taken on the first real change only.
+    fn apply_drag_walls(&mut self, walls: Vec<Wall>, moved: &mut bool) {
+        if walls == self.plan.walls {
+            return;
+        }
+        if !*moved {
+            self.snapshot();
+            *moved = true;
+        }
+        self.plan.walls = walls;
+        self.dirty_cov = true;
+    }
+
+    /// Hover feedback without a gesture: snap marker, wall / corner highlight and the cursor.
+    fn update_hover(&mut self, raw: P, alt: bool) {
+        self.hover_wall = None;
+        self.hover_end = None;
+        if self.calib.is_some() {
+            return self.set_cursor("crosshair");
+        }
+        let cursor = match self.tool {
+            Tool::Select => {
+                if self.hit_ap(raw).is_some() {
+                    "move"
+                } else if let Some((_, q)) = edit::nearest_end(&self.plan.walls, raw, self.px(9.0), |_| false) {
+                    self.hover_end = Some(q);
+                    "grab" // reshape
+                } else if let Some(i) = edit::nearest_wall(&self.plan.walls, raw, self.px(12.0)) {
+                    self.hover_wall = Some(i);
+                    "move"
+                } else {
+                    "default"
+                }
+            }
+            Tool::Wall | Tool::Room => {
+                if self.poly.is_some() {
+                    self.poly_track(raw, alt);
+                } else {
+                    self.snap_mark = Some(self.snap_at(raw, None, alt)).filter(|s| s.kind != SnapKind::None);
+                }
+                "crosshair" // add
+            }
+            Tool::Ap if self.hit_ap(raw).is_some() => "move",
+            Tool::Ap => "copy",
+            Tool::Measure => "crosshair",
+            Tool::Erase => "pointer",
+        };
+        self.set_cursor(cursor);
+    }
+
+    fn pointer_up(&mut self, e: &PointerEvent) {
+        if self.primary.is_some_and(|id| id != e.pointer_id()) {
+            return;
+        }
+        self.primary = None;
         match self.drag.take() {
-            Some(Drag::Wall { start, cur }) if start != cur => {
-                self.snapshot();
-                let material = self.material;
-                self.plan.walls.push(Wall { x1: start.0, y1: start.1, x2: cur.0, y2: cur.1, material });
-                self.recompute();
+            Some(Drag::Room { start, cur, square, .. }) => {
+                let corner = self.clamp_pt(if square { edit::square_corner(start, cur) } else { cur });
+                let ws = edit::room(start, corner, self.material);
+                if ws.iter().map(edit::length).fold(f64::INFINITY, f64::min) * self.plan.cell_m >= 0.1 {
+                    self.snapshot();
+                    let n0 = self.plan.walls.len();
+                    self.plan.walls.extend(ws);
+                    self.set_tool(Tool::Select);
+                    self.sel_walls = (n0..self.plan.walls.len()).collect();
+                    self.recompute();
+                } else {
+                    self.render();
+                }
+            }
+            Some(Drag::Point) => {
+                let Some(poly) = &self.poly else { return self.render() };
+                let first_click = poly.walls.is_empty() && poly.typed.is_empty() && dist(poly.cur, poly.pts[0]) < self.px(4.0);
+                if first_click {
+                    return self.render(); // start placed: wait for the next point
+                }
+                if let Some(t) = self.poly_target() {
+                    self.poly_add(t);
+                }
             }
             Some(Drag::Ap { moved: false, .. }) => {
                 self.undo.pop(); // tap to select only: nothing changed
                 self.render();
             }
             Some(Drag::Ap { moved: true, .. }) => self.recompute(),
-            _ => self.render(),
+            Some(Drag::Move { moved, .. }) | Some(Drag::Joint { moved, .. }) => {
+                self.snap_mark = None;
+                if moved {
+                    // a corner dropped onto its own wall's other end leaves a zero-length wall
+                    let n = self.plan.walls.len();
+                    self.plan.walls.retain(|w| edit::length(w) > edit::JOINT_EPS);
+                    if self.plan.walls.len() != n {
+                        self.sel_walls.clear();
+                    }
+                    self.recompute();
+                } else {
+                    self.render();
+                }
+                self.set_cursor("default");
+            }
+            Some(Drag::Box { start, cur, add }) => {
+                let hits = if dist(start, cur) < self.px(4.0) { Vec::new() } else { edit::in_box(&self.plan.walls, start, cur) };
+                if !add {
+                    self.sel_walls.clear();
+                }
+                for h in hits {
+                    if !self.sel_walls.contains(&h) {
+                        self.sel_walls.push(h);
+                    }
+                }
+                self.sel_at = None;
+                self.render_wallpanel();
+                self.render();
+            }
+            None => self.render(),
         }
+    }
+
+    /// Esc: abort the gesture in progress (restoring dragged walls), else drop the selection.
+    fn cancel(&mut self) {
+        if self.calib.take().is_some() {
+            self.render_drawbar();
+            return self.render();
+        }
+        match self.drag.take() {
+            Some(Drag::Move { moved, .. }) | Some(Drag::Joint { moved, .. }) => {
+                if moved {
+                    self.plan.walls = std::mem::take(&mut self.edit_base);
+                    self.undo.pop();
+                    self.recompute();
+                }
+            }
+            Some(d @ Drag::Ap { .. }) => self.drag = Some(d),
+            Some(_) => {}
+            None => {
+                self.sel_walls.clear();
+                self.sel_at = None;
+                self.render_wallpanel();
+            }
+        }
+        self.primary = None;
+        self.snap_mark = None;
+        self.render();
+    }
+
+    /// Keys while not typing in a control. Returns true when handled.
+    fn key_edit(&mut self, key: &str, shift: bool) -> bool {
+        if let Some(p) = &mut self.poly {
+            let digit = key.len() == 1 && key.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ',');
+            match key {
+                _ if digit => p.typed.push_str(&key.replace(',', ".")),
+                "Backspace" if !p.typed.is_empty() => {
+                    p.typed.pop();
+                }
+                "Enter" if !p.typed.is_empty() => {
+                    if let Some(t) = self.poly_target() {
+                        self.poly_add(t);
+                    }
+                }
+                "Enter" => self.finish_poly(),
+                "Escape" if !p.typed.is_empty() => p.typed.clear(),
+                "Escape" => self.finish_poly(),
+                _ => return false,
+            }
+            self.render_drawbar();
+            self.render();
+            return true;
+        }
+        let step = if shift { 0.5 } else { 0.1 } / self.plan.cell_m;
+        match key {
+            "Escape" => {
+                if has_body_class("start-on") {
+                    show("start", false);
+                    body_class("start-on", false);
+                } else {
+                    self.cancel();
+                }
+            }
+            "Delete" | "Backspace" if !self.sel_walls.is_empty() => self.delete_sel(),
+            "ArrowLeft" if !self.sel_walls.is_empty() => self.nudge((-step, 0.0)),
+            "ArrowRight" if !self.sel_walls.is_empty() => self.nudge((step, 0.0)),
+            "ArrowUp" if !self.sel_walls.is_empty() => self.nudge((0.0, -step)),
+            "ArrowDown" if !self.sel_walls.is_empty() => self.nudge((0.0, step)),
+            _ => return false,
+        }
+        true
+    }
+
+    /// One undo step for a selection edit: applies `f` to a copy of the walls and keeps it if
+    /// anything changed. `f` returns the new selection.
+    fn edit_walls(&mut self, f: impl FnOnce(&mut Vec<Wall>, &[usize]) -> Option<Vec<usize>>) {
+        let mut ws = self.plan.walls.clone();
+        let Some(sel) = f(&mut ws, &self.sel_walls) else { return };
+        if ws != self.plan.walls {
+            self.snapshot();
+            self.plan.walls = ws;
+        }
+        self.sel_walls = sel;
+        self.sel_at = None;
+        self.recompute();
+    }
+
+    fn delete_sel(&mut self) {
+        self.edit_walls(|ws, sel| {
+            edit::delete(ws, sel);
+            Some(Vec::new())
+        });
+    }
+
+    fn nudge(&mut self, d: P) {
+        let (w, h) = (self.plan.width as f64, self.plan.height as f64);
+        let at = self.sel_at;
+        self.edit_walls(|ws, sel| {
+            let d = edit::clamp_delta(ws, sel, d, w, h);
+            edit::move_walls(ws, sel, d, edit::JOINT_EPS, false);
+            Some(sel.to_vec())
+        });
+        self.sel_at = at.map(|p| (p.0 + d.0, p.1 + d.1));
+    }
+
+    fn duplicate_sel(&mut self) {
+        let off = 0.5 / self.plan.cell_m;
+        self.edit_walls(|ws, sel| (!sel.is_empty()).then(|| edit::duplicate(ws, sel, (off, off))));
+    }
+
+    fn set_sel_material(&mut self, m: Material) {
+        self.edit_walls(|ws, sel| {
+            for &i in sel {
+                if let Some(w) = ws.get_mut(i) {
+                    w.material = m;
+                }
+            }
+            Some(sel.to_vec())
+        });
+    }
+
+    /// Point on the single selected wall where it was clicked (else its middle).
+    fn sel_point(&self, i: usize) -> P {
+        let w = &self.plan.walls[i];
+        self.sel_at.map(|p| edit::project(w, p).1).unwrap_or_else(|| edit::midpoint(w))
+    }
+
+    fn split_sel(&mut self) {
+        let Some(i) = self.single_sel() else { return };
+        let (p, min) = (self.sel_point(i), 0.05 / self.plan.cell_m);
+        self.edit_walls(|ws, _| edit::split(ws, i, p, min).map(|[a, _]| vec![a]));
+    }
+
+    fn opening_sel(&mut self, door: bool) {
+        let Some(i) = self.single_sel() else { return };
+        let p = self.sel_point(i);
+        let (width, m) = if door { (DOOR_M, Material::WoodDoor) } else { (WINDOW_M, Material::Glass) };
+        let width = width / self.plan.cell_m;
+        self.edit_walls(|ws, _| edit::insert_opening(ws, i, p, width, m).map(|k| vec![k]));
+    }
+
+    fn set_sel_length(&mut self) {
+        let (Some(i), Some(m)) = (self.single_sel(), num("wp-len").filter(|m| *m >= 0.01)) else { return };
+        let len = m / self.plan.cell_m;
+        self.edit_walls(|ws, sel| {
+            edit::set_length(ws, i, len, edit::JOINT_EPS);
+            Some(sel.to_vec())
+        });
+    }
+
+    // ---------- start card, tracing ----------
+
+    fn start_draw(&mut self) {
+        let wm = num("start-w").unwrap_or(12.0).clamp(2.0, 200.0);
+        let hm = num("start-h").unwrap_or(9.0).clamp(2.0, 200.0);
+        let max = MAX_GRID as f64;
+        let cell = if wm.max(hm) / 0.1 > max { (wm.max(hm) / max * 20.0).ceil() / 20.0 } else { 0.1 };
+        let cells = |m: f64| ((m / cell).round() as usize).clamp(10, MAX_GRID);
+        let mut p = Plan::new(cells(wm), cells(hm), cell);
+        p.materials = self.plan.materials.clone();
+        self.set_plan(p);
+        self.close_start();
+        self.set_tool(Tool::Room);
+        let (w, h) = (self.plan.width as f64 * cell, self.plan.height as f64 * cell);
+        self.msg(&fmt(self.tr("start_drawn"), &[("w", format!("{w:.1}")), ("h", format!("{h:.1}"))]));
+    }
+
+    fn close_start(&self) {
+        show("start", false);
+        body_class("start-on", false);
+    }
+
+    fn open_start(&self) {
+        show("start", true);
+        body_class("start-on", true);
+    }
+
+    /// A background image finished loading; in trace mode it gets an empty plan with the image's
+    /// aspect ratio and the 2-click scale calibration starts.
+    fn bg_loaded(&mut self) {
+        if std::mem::take(&mut self.trace_pending) {
+            if let Some((img, _)) = &self.bg {
+                let (iw, ih) = (img.natural_width().max(1) as f64, img.natural_height().max(1) as f64);
+                let long = 240.0;
+                let (w, h) = if iw >= ih { (long, long * ih / iw) } else { (long * iw / ih, long) };
+                let mut p = Plan::new((w.round() as usize).max(10), (h.round() as usize).max(10), 0.05);
+                p.materials = self.plan.materials.clone();
+                self.set_plan(p);
+                self.start_calib();
+            }
+        }
+        self.render();
+    }
+
+    fn start_calib(&mut self) {
+        if self.mode3d {
+            self.set_mode3d(false);
+        }
+        self.finish_poly();
+        self.calib = Some(Vec::new());
+        self.render_drawbar();
+        self.render();
+    }
+
+    fn finish_calib(&mut self) {
+        let Some(pts) = self.calib.take() else { return };
+        self.render_drawbar();
+        self.render();
+        let d = dist(pts[0], pts[1]);
+        if d < 2.0 {
+            return self.msg(self.tr("calib_short"));
+        }
+        let answer = win().prompt_with_message(self.tr("calib_prompt")).ok().flatten();
+        let Some(m) = answer.and_then(|s| parse_num(&s)).filter(|m| *m > 0.0) else { return };
+        let mut p = self.plan.clone();
+        p.cell_m = (m / d).clamp(0.005, 5.0);
+        self.set_plan(p);
+        self.set_tool(Tool::Wall);
+        let cm = self.plan.cell_m;
+        let m = fmt(
+            self.tr("calib_done"),
+            &[
+                ("cm", format!("{:.1}", cm * 100.0)),
+                ("w", format!("{:.1}", self.plan.width as f64 * cm)),
+                ("h", format!("{:.1}", self.plan.height as f64 * cm)),
+            ],
+        );
+        self.msg(&m);
     }
 
     // ---------- 3D ----------
@@ -1027,6 +1837,7 @@ impl App {
         }
         self.mode3d = on;
         body_class("mode3d", on);
+        self.render_drawbar();
         self.resize();
         set_active("mode-2d", !on);
         set_active("mode-3d", on);
@@ -1086,11 +1897,34 @@ impl App {
         self.down_at = (x, y);
         let ndc = self.ndc3(x, y);
         let sc = self.scene.as_ref().unwrap();
+        let wall_hit = (self.tool == Tool::Select && e.button() == 0)
+            .then(|| view::pick_wall(&self.plan, &sc.inv_vp, ndc.0, ndc.1, scene::wall_height))
+            .flatten();
+        let (o, d) = math::ndc_ray(&sc.inv_vp, ndc.0, ndc.1);
         if let Some(i) = sc.pick_ap(&self.plan, ndc).filter(|_| e.button() == 0) {
             self.snapshot();
             self.selected = Some(i);
             self.sync_inputs();
             self.drag3 = Some(Drag3::Ap { idx: i, moved: false });
+        } else if let Some((i, t)) = wall_hit {
+            // select (Shift toggles) and drag along the horizontal plane through the grab point
+            if e.shift_key() && self.sel_walls.contains(&i) {
+                self.sel_walls.retain(|&k| k != i);
+                self.drag3 = None;
+            } else {
+                if !e.shift_key() && !self.sel_walls.contains(&i) {
+                    self.sel_walls.clear();
+                }
+                if !self.sel_walls.contains(&i) {
+                    self.sel_walls.push(i);
+                }
+                let hit = math::add(o, math::scale(d, t));
+                self.edit_base = self.plan.walls.clone();
+                let origin = view::world_to_cell(&self.plan, hit);
+                self.drag3 = Some(Drag3::Walls { origin, h: hit[1], moved: false });
+            }
+            self.sel_at = None;
+            self.render_wallpanel();
         } else if e.button() == 2 || e.shift_key() {
             self.drag3 = Some(Drag3::Pan);
         } else if sc.mode == CamMode::Walk {
@@ -1115,6 +1949,24 @@ impl App {
         }
         let (dx, dy) = prev.map(|(px, py)| (x - px, y - py)).unwrap_or((0.0, 0.0));
         let ndc = self.ndc3(x, y);
+        if let Some(Drag3::Walls { origin, h, mut moved }) = self.drag3 {
+            let inv = self.scene.as_ref().map(|s| s.inv_vp);
+            if let Some(wp) = inv.and_then(|inv| view::floor_pick(&inv, ndc.0, ndc.1, h)) {
+                let p = view::world_to_cell(&self.plan, wp);
+                let mut dd = (p.0 - origin.0, p.1 - origin.1);
+                if let Some(g) = self.grid() {
+                    dd = ((dd.0 / g).round() * g, (dd.1 / g).round() * g);
+                }
+                let (pw, ph) = (self.plan.width as f64, self.plan.height as f64);
+                let dd = edit::clamp_delta(&self.edit_base, &self.sel_walls, dd, pw, ph);
+                let mut walls = self.edit_base.clone();
+                edit::move_walls(&mut walls, &self.sel_walls, dd, edit::JOINT_EPS, e.alt_key());
+                self.apply_drag_walls(walls, &mut moved);
+                self.drag3 = Some(Drag3::Walls { origin, h, moved });
+                self.hover = Some(self.clamp_pt(p));
+            }
+            return self.render_readout();
+        }
         let Some(sc) = &mut self.scene else { return };
         let pick = view::pick_cell(&self.plan, &sc.inv_vp, ndc.0, ndc.1);
         match self.drag3 {
@@ -1156,7 +2008,9 @@ impl App {
         if self.drag3.is_none() {
             let sc = self.scene.as_ref().unwrap();
             self.hot_ap = sc.pick_ap(&self.plan, ndc);
-            let _ = self.canvas3d.class_list().toggle_with_force("hot", self.hot_ap.is_some());
+            let hot_wall = self.tool == Tool::Select
+                && view::pick_wall(&self.plan, &sc.inv_vp, ndc.0, ndc.1, scene::wall_height).is_some();
+            let _ = self.canvas3d.class_list().toggle_with_force("hot", self.hot_ap.is_some() || hot_wall);
         }
         self.render_readout();
     }
@@ -1172,6 +2026,7 @@ impl App {
                 self.undo.pop();
             }
             Some(Drag3::Ap { moved: true, .. }) => self.recompute(),
+            Some(Drag3::Walls { moved: true, .. }) => self.recompute(),
             Some(Drag3::Orbit | Drag3::Look) if tap => self.tap3(e),
             _ => {}
         }
@@ -1204,7 +2059,11 @@ impl App {
                     self.recompute();
                 }
             }
-            Tool::Wall => {}
+            Tool::Select => {
+                self.sel_walls.clear();
+                self.render_wallpanel();
+            }
+            Tool::Room | Tool::Wall => {}
         }
     }
 
@@ -1235,6 +2094,7 @@ impl App {
         let frame = Frame {
             plan: &self.plan,
             selected: self.selected,
+            sel_walls: &self.sel_walls,
             hover: self.hover,
             drag_ap,
             hot_ap: self.hot_ap,
@@ -1267,7 +2127,7 @@ impl App {
 
     fn edit_grid(&mut self) {
         let mut p = self.plan.clone();
-        p.cell_m = num("scale").unwrap_or(p.cell_m).clamp(0.02, 5.0);
+        p.cell_m = num("scale").unwrap_or(p.cell_m).clamp(0.005, 5.0);
         p.width = num("gw").unwrap_or(p.width as f64).clamp(10.0, 400.0) as usize;
         p.height = num("gh").unwrap_or(p.height as f64).clamp(10.0, 400.0) as usize;
         p.exponent = num("exponent").unwrap_or(p.exponent).clamp(1.0, 8.0);
@@ -1613,7 +2473,7 @@ fn main() {
     let canvas: HtmlCanvasElement = el("plan");
     let heat: HtmlCanvasElement = doc().create_element("canvas").unwrap().dyn_into().unwrap();
     let ko = win().navigator().language().unwrap_or_default().to_lowercase().starts_with("ko");
-    let plan = Plan::from_json(APARTMENT).unwrap();
+    let plan = Plan::new(120, 90, 0.1);
     let app = App {
         cov: coverage(&plan),
         plan,
@@ -1623,6 +2483,17 @@ fn main() {
         material: Material::Drywall,
         ko,
         selected: None,
+        sel_walls: Vec::new(),
+        sel_at: None,
+        poly: None,
+        snap_mark: None,
+        grid_snap: false,
+        hover_wall: None,
+        hover_end: None,
+        primary: None,
+        calib: None,
+        trace_pending: false,
+        edit_base: Vec::new(),
         drag: None,
         hover: None,
         sinr_view: false,
@@ -1661,22 +2532,23 @@ fn main() {
         if a.mobile() {
             body_class("panel-open", false);
         }
-        a.set_tool(Tool::Ap);
         a.apply_lang();
-        // first run = no shared link and nothing saved: the sample apartment plus a short hint
+        // first run = no shared link and nothing (or only an untouched empty plan) saved:
+        // the Start card over an empty 12 × 9 m plan
         let mut first_run = false;
         if !a.load_hash() {
             let saved = storage().and_then(|s| s.get_item(STORE_KEY).ok().flatten());
-            match saved.and_then(|s| Plan::from_json(&s).ok()) {
+            match saved.and_then(|s| Plan::from_json(&s).ok()).filter(|p| !p.walls.is_empty() || !p.aps.is_empty()) {
                 Some(p) => a.plan = p,
                 None => first_run = true,
             }
             a.after_plan_swap();
         }
         a.undo.clear();
-        let seen = storage().and_then(|s| s.get_item(HINT_KEY).ok().flatten()).is_some();
-        if first_run && !seen {
-            el::<Element>("hint").class_list().add_1("show").unwrap();
+        let tool = if a.plan.walls.is_empty() { Tool::Room } else { Tool::Ap };
+        a.set_tool(tool);
+        if first_run {
+            a.open_start();
         }
     }
 
@@ -1695,12 +2567,17 @@ fn main() {
     on(&target, "pointermove", move |e| a.borrow_mut().pointer_move(&e.unchecked_into()));
     for ev in ["pointerup", "pointercancel"] {
         let a = app.clone();
-        on(&target, ev, move |_| a.borrow_mut().pointer_up());
+        on(&target, ev, move |e| a.borrow_mut().pointer_up(&e.unchecked_into()));
     }
     let a = app.clone();
     on(&target, "pointerleave", move |_| {
         let mut a = a.borrow_mut();
         a.hover = None;
+        if a.drag.is_none() {
+            a.snap_mark = None;
+            a.hover_wall = None;
+            a.hover_end = None;
+        }
         a.render();
         a.render_readout();
     });
@@ -1753,22 +2630,71 @@ fn main() {
     let nodes = doc().query_selector_all("[data-tool]").unwrap();
     for i in 0..nodes.length() {
         let e: Element = nodes.get(i).unwrap().dyn_into().unwrap();
-        let tool = match e.get_attribute("data-tool").as_deref() {
-            Some("ap") => Tool::Ap,
-            Some("measure") => Tool::Measure,
-            Some("erase") => Tool::Erase,
-            _ => Tool::Wall,
-        };
+        let Some(tool) = e.get_attribute("data-tool").as_deref().and_then(tool_from_name) else { continue };
         let a = app.clone();
         on(&e, "click", move |_| a.borrow_mut().set_tool(tool));
     }
     on_id("mat-chips", "click", &app, |a, e| {
         let chip = e.target().and_then(|t| t.dyn_into::<Element>().ok()).and_then(|t| t.closest("[data-mat]").ok().flatten());
         if let Some(m) = chip.and_then(|c| c.get_attribute("data-mat")).and_then(|v| v.parse::<usize>().ok()) {
-            a.set_material(Material::ALL[m.min(6)]);
-            a.set_tool(Tool::Wall);
+            let m = Material::ALL[m.min(6)];
+            a.set_material(m);
+            if a.tool == Tool::Select && !a.sel_walls.is_empty() {
+                a.set_sel_material(m);
+            } else if !matches!(a.tool, Tool::Room | Tool::Wall) {
+                a.set_tool(Tool::Wall);
+            }
         }
     });
+    on_id("wp-mats", "click", &app, |a, e| {
+        let chip = e.target().and_then(|t| t.dyn_into::<Element>().ok()).and_then(|t| t.closest("[data-mat]").ok().flatten());
+        if let Some(m) = chip.and_then(|c| c.get_attribute("data-mat")).and_then(|v| v.parse::<usize>().ok()) {
+            a.set_sel_material(Material::ALL[m.min(6)]);
+        }
+    });
+    on_id("wp-close", "click", &app, |a, _| {
+        a.sel_walls.clear();
+        a.render_wallpanel();
+        a.render();
+    });
+    on_id("wp-del", "click", &app, |a, _| a.delete_sel());
+    on_id("wp-dup", "click", &app, |a, _| a.duplicate_sel());
+    on_id("wp-split", "click", &app, |a, _| a.split_sel());
+    on_id("wp-door", "click", &app, |a, _| a.opening_sel(true));
+    on_id("wp-window", "click", &app, |a, _| a.opening_sel(false));
+    on_id("wp-len", "change", &app, |a, _| a.set_sel_length());
+    on_id("snap-grid", "change", &app, |a, _| a.grid_snap = checked("snap-grid"));
+    on_id("draw-done", "click", &app, |a, _| a.finish_poly());
+
+    // start card
+    on_id("start-open", "click", &app, |a, _| a.open_start());
+    on_id("start-close", "click", &app, |a, _| a.close_start());
+    on_id("start-draw", "click", &app, |a, _| a.start_draw());
+    on_id("start-trace", "click", &app, |a, _| {
+        a.close_start();
+        a.trace_pending = true;
+        el::<HtmlElement>("bg-file").click(); // its "change" listener runs later, not re-entrantly
+    });
+    on_id("start-walk", "click", &app, |a, _| {
+        a.close_start();
+        body_class("panel-open", true);
+        let wb: Element = el("walk-box");
+        let _ = wb.set_attribute("open", "");
+        wb.scroll_into_view();
+        a.resize();
+        a.walk_start();
+    });
+    for (id, src) in [("start-apartment", APARTMENT), ("start-office", OFFICE)] {
+        on_id(id, "click", &app, move |a, _| {
+            a.close_start();
+            a.load_str(src);
+            a.set_tool(Tool::Ap);
+            if storage().and_then(|s| s.get_item(HINT_KEY).ok().flatten()).is_none() {
+                show("hint", true);
+            }
+        });
+    }
+    on_id("bg-scale", "click", &app, |a, _| a.start_calib());
 
     on_id("undo", "click", &app, |a, _| a.undo());
     on_id("redo", "click", &app, |a, _| a.redo());
@@ -1839,6 +2765,7 @@ fn main() {
             "blank" => {
                 let p = Plan::new(120, 90, 0.1);
                 a.set_plan(p);
+                a.set_tool(Tool::Room);
             }
             "apartment" => a.load_str(APARTMENT),
             "office" => a.load_str(OFFICE),
@@ -1882,7 +2809,10 @@ fn main() {
     });
 
     // background image: object URL only, never uploaded or stored
-    on_id("bg-btn", "click", &app, |_, _| el::<HtmlElement>("bg-file").click());
+    on_id("bg-btn", "click", &app, |a, _| {
+        a.trace_pending = false;
+        el::<HtmlElement>("bg-file").click();
+    });
     let a = app.clone();
     on(&el::<EventTarget>("bg-file"), "change", move |_| {
         let input: HtmlInputElement = el("bg-file");
@@ -1890,7 +2820,7 @@ fn main() {
         let Ok(url) = Url::create_object_url_with_blob(&file) else { return };
         let img = HtmlImageElement::new().unwrap();
         let a2 = a.clone();
-        let onload = Closure::once_into_js(move || a2.borrow().render());
+        let onload = Closure::once_into_js(move || a2.borrow_mut().bg_loaded());
         img.set_onload(Some(onload.unchecked_ref()));
         img.set_src(&url);
         if let Some((_, old)) = a.borrow_mut().bg.replace((img, url)) {
@@ -1952,22 +2882,27 @@ fn main() {
             return;
         }
         let Ok(mut a) = a.try_borrow_mut() else { return };
-        let key = e.key().to_lowercase();
+        let raw = e.key();
+        let key = raw.to_lowercase();
         let walking = a.mode3d && a.scene.as_ref().is_some_and(|s| s.mode == CamMode::Walk);
         if walking && !(e.ctrl_key() || e.meta_key()) && key_bit(&key) != 0 {
             a.keys |= key_bit(&key);
             e.prevent_default();
             return;
         }
-        if !(e.ctrl_key() || e.meta_key()) {
+        if e.ctrl_key() || e.meta_key() {
+            match (key.as_str(), e.shift_key()) {
+                ("z", false) => a.undo(),
+                ("z", true) | ("y", _) => a.redo(),
+                ("d", _) => a.duplicate_sel(),
+                _ => return,
+            }
+            e.prevent_default();
             return;
         }
-        match (key.as_str(), e.shift_key()) {
-            ("z", false) => a.undo(),
-            ("z", true) | ("y", _) => a.redo(),
-            _ => return,
+        if !e.alt_key() && a.key_edit(&raw, e.shift_key()) {
+            e.prevent_default();
         }
-        e.prevent_default();
     });
     let a = app.clone();
     on(&win().into(), "keyup", move |e| {
@@ -2036,22 +2971,55 @@ mod tests {
         // el() unwraps and release builds abort on panic: a missing id would kill the app.
         let ids = attr_values(HTML, "id");
         let mut used = Vec::new();
-        for pat in ["on_id(\"", "el(\"", ">(\"", "set_active(\"", "checked(\"", "num(\"", "select_val(\""] {
+        for pat in ["on_id(\"", "el(\"", ">(\"", "set_active(\"", "checked(\"", "num(\"", "select_val(\"", "show(\"", "(\"start-"] {
             for (i, _) in SRC.match_indices(pat) {
                 if pat == ">(\"" && !SRC[i.saturating_sub(40)..i].contains("el::<") {
                     continue;
                 }
                 let rest = &SRC[i + pat.len()..];
-                used.push(&rest[..rest.find('"').unwrap()]);
+                let id = &rest[..rest.find('"').unwrap()];
+                // the "(\"start-" pattern catches ids in tuples, e.g. ("start-office", OFFICE)
+                match pat {
+                    "(\"start-" if id == "on" || id.contains('{') => {} // body class / this test
+                    "(\"start-" => used.push(format!("start-{id}")),
+                    _ => used.push(id.to_string()),
+                }
             }
         }
         assert!(used.len() > 40, "{}", used.len());
-        for id in used {
+        for id in &used {
             if id == "{id}" || id.is_empty() || id.contains(' ') {
                 continue;
             }
-            assert!(ids.contains(&id), "index.html lacks #{id}");
+            assert!(ids.contains(&id.as_str()), "index.html lacks #{id}");
         }
+    }
+
+    #[test]
+    fn every_tr_key_exists() {
+        // tr() falls back to the raw key, so a typo would show up as e.g. "wp_tihck" in the UI
+        let mut n = 0;
+        for pat in [".tr(\""] {
+            for (i, _) in SRC.match_indices(pat) {
+                let rest = &SRC[i + pat.len()..];
+                let k = &rest[..rest.find('"').unwrap()];
+                if k.is_empty() || k.contains(' ') || k.contains('{') {
+                    continue;
+                }
+                assert!(STRINGS.iter().any(|s| s.0 == k), "missing string {k}");
+                n += 1;
+            }
+        }
+        assert!(n > 30, "{n}");
+    }
+
+    #[test]
+    fn tool_names_round_trip() {
+        for (i, n) in TOOL_NAMES.iter().enumerate() {
+            assert_eq!(tool_from_name(n).map(|t| t as usize), Some(i));
+            assert!(HTML.contains(&format!("data-tool=\"{n}\"")), "toolbar lacks {n}");
+        }
+        assert_eq!(tool_from_name("nope"), None);
     }
 
     #[test]
