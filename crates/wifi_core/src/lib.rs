@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod edit;
 pub mod pdr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

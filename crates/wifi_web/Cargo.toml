@@ -18,4 +18,7 @@ features = [
   "HtmlTextAreaElement", "File", "FileList", "FileReader", "Blob", "BlobPropertyBag", "Url",
   "Location", "Navigator", "Storage", "CssStyleDeclaration", "DomRect", "Performance", "History",
   "Clipboard", "DomTokenList", "DeviceMotionEvent", "DeviceAcceleration", "DeviceOrientationEvent",
+  "WheelEvent", "CanvasGradient", "TextMetrics", "console", "WebGl2RenderingContext", "WebGlBuffer",
+  "WebGlProgram", "WebGlShader", "WebGlTexture", "WebGlUniformLocation", "WebGlVertexArrayObject",
+  "WebGlContextAttributes",
 ]
