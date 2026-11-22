@@ -1,0 +1,37 @@
+{
+  "name": "Sample open-plan office",
+  "width": 200,
+  "height": 150,
+  "cell_m": 0.2,
+  "exponent": 2.2,
+  "offset_db": 0.0,
+  "walls": [
+    { "x1": 1, "y1": 1, "x2": 199, "y2": 1, "material": "concrete" },
+    { "x1": 199, "y1": 1, "x2": 199, "y2": 149, "material": "concrete" },
+    { "x1": 199, "y1": 149, "x2": 1, "y2": 149, "material": "concrete" },
+    { "x1": 1, "y1": 149, "x2": 1, "y2": 1, "material": "concrete" },
+    { "x1": 90, "y1": 60, "x2": 110, "y2": 60, "material": "metal" },
+    { "x1": 110, "y1": 60, "x2": 110, "y2": 90, "material": "metal" },
+    { "x1": 110, "y1": 90, "x2": 90, "y2": 90, "material": "metal" },
+    { "x1": 90, "y1": 90, "x2": 90, "y2": 60, "material": "metal" },
+    { "x1": 1, "y1": 40, "x2": 20, "y2": 40, "material": "glass" },
+    { "x1": 20, "y1": 40, "x2": 25, "y2": 40, "material": "wood_door" },
+    { "x1": 25, "y1": 40, "x2": 60, "y2": 40, "material": "glass" },
+    { "x1": 60, "y1": 40, "x2": 65, "y2": 40, "material": "wood_door" },
+    { "x1": 65, "y1": 40, "x2": 100, "y2": 40, "material": "glass" },
+    { "x1": 100, "y1": 40, "x2": 105, "y2": 40, "material": "wood_door" },
+    { "x1": 105, "y1": 40, "x2": 120, "y2": 40, "material": "glass" },
+    { "x1": 40, "y1": 1, "x2": 40, "y2": 40, "material": "drywall" },
+    { "x1": 80, "y1": 1, "x2": 80, "y2": 40, "material": "drywall" },
+    { "x1": 120, "y1": 1, "x2": 120, "y2": 40, "material": "drywall" },
+    { "x1": 150, "y1": 110, "x2": 199, "y2": 110, "material": "brick" },
+    { "x1": 150, "y1": 110, "x2": 150, "y2": 120, "material": "brick" },
+    { "x1": 150, "y1": 120, "x2": 150, "y2": 126, "material": "wood_door" },
+    { "x1": 150, "y1": 126, "x2": 150, "y2": 149, "material": "brick" }
+  ],
+  "aps": [
+    { "x": 50.5, "y": 80.5, "band": "5", "tx_dbm": 20.0, "gain_dbi": 4.0, "channel": 36 },
+    { "x": 160.5, "y": 60.5, "band": "5", "tx_dbm": 20.0, "gain_dbi": 4.0, "channel": 36 }
+  ],
+  "measurements": []
+}
